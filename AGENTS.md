@@ -1,0 +1,105 @@
+# AGENTS.md
+
+Guidance for future coding agents working on `github.com/2h2d-co/cage`.
+
+## Project intent
+
+`cage` is a Go-based, macOS-only CLI secret manager: a minimal/opinionated alternative take on `fnox`.
+
+Core constraints:
+
+- Global config only: `$XDG_CONFIG_HOME/cage/config.toml`, falling back to `~/.config/cage/config.toml`.
+- `--config PATH` is supported for testing/development.
+- No hierarchical configs and no TUI for now.
+- Relative identity/provider files resolve from the config file directory.
+- Created identity files are named `NAME.identity` and written with mode `0600`.
+- Encrypted 1Password provider files are named `NAME.1p.age` and written with mode `0600`.
+- 1Password access uses the 1Password Go SDK, not the `op` CLI.
+- Provider tokens must not be exposed to child processes; `OP_SERVICE_ACCOUNT_TOKEN` is stripped from `cage exec` children.
+- 1Password Environments are not cached on disk or across loads.
+
+## Config schema reminders
+
+Supported types only:
+
+- identities: `basic`, `yubikey`, `secure-enclave`
+- providers: `1password`
+- environments: `1password-environment`
+
+Profiles are flat and reference only environments, not other profiles. There is no default profile.
+
+Resolution rules for `get`/`exec`:
+
+- `--profiles` and `--environments` are comma-separated.
+- Flags override `CAGE_PROFILES` and `CAGE_ENVIRONMENTS`.
+- Load profiles first in argument order.
+- Load explicit environments after profiles in argument order.
+- Last loaded environment variable wins.
+
+## Important implementation details
+
+- CLI is built with Cobra in `internal/cage/root.go`.
+- `main.go` only wires the root command and redacted error output.
+- age support is in `internal/cage/age.go`.
+  - Native identities use `filippo.io/age`.
+  - Plugin identities use `filippo.io/age/plugin`.
+- 1Password Environment resolution is in `internal/cage/resolve.go`.
+- `cage exec` uses process replacement semantics via `golang.org/x/sys/unix.Exec`.
+- `gosec` G304 is handled by cleaning file paths before reads; avoid adding `#nosec`.
+- Plugin command execution intentionally avoids `exec.Command` to keep `gosec` clean.
+- The 1Password Go SDK beta currently needs CGO for darwin cross-compilation; do not force `CGO_ENABLED=0` in release builds.
+
+## Identity/provider/environment/profile command behavior
+
+- `cage identity basic create NAME` generates a native age identity and updates `[identities]`.
+- `cage identity yubikey create NAME` calls `age-plugin-yubikey` and updates `[identities]`.
+- `cage identity se create NAME` calls `age-plugin-se` and updates `[identities]`.
+- `cage provider 1p create NAME --identity IDENTITY` reads a token securely or from stdin, encrypts to only that identity, and updates `[providers]`.
+- `cage environment create NAME --provider PROVIDER --uuid UUID` creates a `1password-environment` entry and updates `[environments]`.
+- `cage profile create NAME --environments ENV[,ENV...]` creates a flat profile and updates `[profiles]`.
+- Environment deletion is blocked while a profile references that environment.
+- `delete` removes cage config entries and local files after confirmation.
+- `age-plugin-yubikey` does not expose key-material deletion; do not claim YubiKey material is erased.
+
+## Linting/security expectations
+
+Do not lower thresholds, disable linters, or add suppressions just to get green builds.
+
+Current expectations:
+
+- No `nolint`.
+- No `#nosec`.
+- No golangci-lint `disable` or `exclude-rules`.
+- Zizmor runs as `zizmor --pedantic --no-ignores .github/workflows`.
+- GitHub Actions are pinned by full commit SHA and use `persist-credentials: false`.
+
+Recommended validation:
+
+```sh
+go mod verify
+test -z "$(gofmt -l .)"
+go test -race -mod=readonly ./...
+go vet ./...
+mise run lint
+goreleaser check
+```
+
+If mise config is untrusted in a non-interactive harness, run commands with:
+
+```sh
+export MISE_TRUSTED_CONFIG_PATHS=$PWD
+```
+
+## Tooling files
+
+- `mise.toml` defines Go, age, age plugins, actionlint, zizmor, golangci-lint, and GoReleaser.
+- `mise.lock` is present and should be kept in sync after tool changes.
+- `.golangci.yml` intentionally enables established Go quality/security linters.
+- `.goreleaser.yaml` builds darwin amd64/arm64 releases.
+- `Makefile` mirrors common tasks.
+
+## Documentation/metadata
+
+- License: MIT, copyright `Two Humans and Two Dogs LLC (2h2d.co)`.
+- Repo URL: `https://github.com/2h2d-co/cage`.
+- Keep README, `examples/config.toml`, command help, shell completions, and manpage support aligned with CLI behavior.

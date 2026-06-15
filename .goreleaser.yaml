@@ -1,0 +1,48 @@
+version: 2
+
+project_name: cage
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cage
+    main: .
+    binary: cage
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: cage
+    ids:
+      - cage
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - examples/config.toml
+      - docs/man/cage.1
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+
+release:
+  github:
+    owner: 2h2d-co
+    name: cage

@@ -1,0 +1,48 @@
+# Binaries and build outputs
+/cage
+/bin/
+/dist/
+/build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test and coverage artifacts
+*.test
+*.out
+*.prof
+coverage.txt
+coverage.html
+coverage.out
+
+# Go workspace/local module files
+go.work
+go.work.sum
+/vendor/
+
+# Local environment and secrets
+.env
+.env.*
+*.identity
+*.1p.age
+*.age
+
+# Tool caches and temporary files
+/.cache/
+/tmp/
+/temp/
+*.tmp
+
+# Editor/OS metadata
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Agent-local notes
+DESIRES.md
+LEARNINGS.md
+MISTAKES.md

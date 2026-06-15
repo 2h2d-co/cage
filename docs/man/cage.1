@@ -1,0 +1,114 @@
+.TH CAGE 1 "June 2026" "cage" "Cage Manual"
+.SH NAME
+cage \- minimal age-backed 1Password environment secret manager
+.SH SYNOPSIS
+.B cage
+[--config PATH] [--verbose] COMMAND [ARGS]
+.PP
+.B cage get
+[--profiles LIST] [--environments LIST] [--json] ENV_VAR|*
+.PP
+.B cage exec
+[--profiles LIST] [--environments LIST] -- COMMAND [ARG...]
+.PP
+.B cage environment
+create|list|delete ...
+.PP
+.B cage profile
+create|list|delete ...
+.SH DESCRIPTION
+.B cage
+loads 1Password Environments using age-protected 1Password service account tokens.
+It is macOS-only and uses a single global config file at
+.BR $XDG_CONFIG_HOME/cage/config.toml ,
+falling back to
+.BR ~/.config/cage/config.toml .
+Set
+.B CAGE_CONFIG
+or pass
+.B --config PATH
+to use another config; the flag takes precedence.
+.SH CONFIGURATION
+Relative identity and provider files are resolved from the config file directory.
+Supported identity types are
+.BR basic ,
+.BR yubikey ,
+and
+.BR secure-enclave .
+Supported provider type is
+.BR 1password .
+Supported environment type is
+.BR 1password-environment .
+.SH RESOLUTION
+Profiles and environments are selected with comma-separated
+.B --profiles
+and
+.B --environments
+flags, or with
+.B CAGE_PROFILES
+and
+.BR CAGE_ENVIRONMENTS .
+Flags override environment variables. Profiles load first in order, then explicit environments. Last loaded variable wins. There is no default profile.
+.SH COMMANDS
+.TP
+.B cage identity basic create NAME
+Create a native age identity, write
+.BR NAME.identity
+with mode 0600, and update config.
+.TP
+.B cage identity yubikey create NAME
+Create a YubiKey identity, write
+.BR NAME.identity
+with mode 0600, and update config.
+.TP
+.B cage identity se create NAME
+Create a Secure Enclave identity, write
+.BR NAME.identity
+with mode 0600, and update config.
+.TP
+.B cage provider 1p create NAME --identity IDENTITY
+Read a 1Password service account token securely or from stdin, encrypt it to one identity, write
+.BR NAME.1p.age
+with mode 0600, and update config.
+.TP
+.B cage environment create NAME --provider PROVIDER --uuid UUID
+Create a 1Password Environment config entry.
+.TP
+.B cage environment list
+List configured environments.
+.TP
+.B cage environment delete NAME
+Delete an environment config entry if no profile references it.
+.TP
+.B cage profile create NAME --environments ENV[,ENV...]
+Create a flat profile from configured environments.
+.TP
+.B cage profile list
+List configured profiles.
+.TP
+.B cage profile delete NAME
+Delete a profile.
+.TP
+.B cage get ENV_VAR
+Print a single resolved value. Missing variables exit with status 1.
+.TP
+.B cage get '*'
+Print all resolved variables as KEY=value lines. Use
+.B --json
+for a JSON object.
+.TP
+.B cage exec -- COMMAND
+Replace cage with COMMAND where supported, inheriting the parent environment overlaid with resolved variables. OP_SERVICE_ACCOUNT_TOKEN is removed from the child environment.
+.TP
+.B cage completion SHELL
+Generate shell completions for bash, zsh, fish, or powershell.
+.TP
+.B cage man DIR
+Generate full roff manpages for cage and subcommands.
+.SH SECURITY NOTES
+Provider tokens are decrypted only in memory to initialize the 1Password SDK. 1Password Environments are not cached on disk or across loads. cage redacts common secret-looking values in errors.
+.SH PROJECT
+.UR https://github.com/2h2d-co/cage
+.UE
+.SH LICENSE
+MIT. Copyright (c) Two Humans and Two Dogs LLC (2h2d.co).

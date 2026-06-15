@@ -1,0 +1,141 @@
+[tools]
+go = "1.26.4"
+age = "latest"
+age-plugin-yubikey = "latest"
+"github:remko/age-plugin-se" = "latest"
+actionlint = "latest"
+zizmor = "latest"
+golangci-lint = "latest"
+goreleaser = "latest"
+
+[shell_alias]
+"cage:local" = "go run ."
+"cage:it" = "CAGE_CONFIG=\"${XDG_CONFIG_HOME:-$HOME/.config}/cage/integration-test/config.toml\" go run ."
+
+[tasks.test]
+description = "Run Go tests"
+run = "go test ./..."
+
+[tasks.integration-test]
+description = "Run end-to-end integration tests"
+run = "go test -v -count=1 -tags=integration ./integration"
+
+[tasks."integration:setup:basic"]
+description = "Set up the basic integration identity/provider/environments/profile"
+usage = '''
+flag "--primary-uuid <uuid>" help="Primary 1Password Environment UUID"
+flag "--override-uuid <uuid>" help="Override 1Password Environment UUID"
+flag "--override" help="Overwrite existing cage entries and files"
+'''
+run = '''
+#!/usr/bin/env bash
+set -eo pipefail
+args=()
+if [[ -n "${usage_primary_uuid:-}" ]]; then
+  args+=(--primary-uuid "$usage_primary_uuid")
+fi
+if [[ -n "${usage_override_uuid:-}" ]]; then
+  args+=(--override-uuid "$usage_override_uuid")
+fi
+if [[ "${usage_override:-false}" == "true" ]]; then
+  args+=(--override)
+fi
+scripts/integration/setup-basic.sh "${args[@]}"
+'''
+
+[tasks."integration:setup:secure-enclave"]
+description = "Set up the optional Secure Enclave integration profile"
+usage = '''
+flag "--primary-uuid <uuid>" help="Primary 1Password Environment UUID; defaults to the integration-test environment UUID"
+flag "--override" help="Overwrite existing cage entries and files"
+'''
+run = '''
+#!/usr/bin/env bash
+set -eo pipefail
+args=()
+if [[ -n "${usage_primary_uuid:-}" ]]; then
+  args+=(--primary-uuid "$usage_primary_uuid")
+fi
+if [[ "${usage_override:-false}" == "true" ]]; then
+  args+=(--override)
+fi
+scripts/integration/setup-secure-enclave.sh "${args[@]}"
+'''
+
+[tasks."integration:setup:yubikey-touch"]
+description = "Set up the optional YubiKey touch-only integration profile"
+usage = '''
+flag "--primary-uuid <uuid>" help="Primary 1Password Environment UUID; defaults to the integration-test environment UUID"
+flag "--serial <serial>" help="YubiKey serial number when more than one YubiKey is connected"
+flag "--override" help="Overwrite existing cage entries/files and the selected YubiKey PIV slot"
+'''
+run = '''
+#!/usr/bin/env bash
+set -eo pipefail
+args=()
+if [[ -n "${usage_primary_uuid:-}" ]]; then
+  args+=(--primary-uuid "$usage_primary_uuid")
+fi
+if [[ -n "${usage_serial:-}" ]]; then
+  args+=(--serial "$usage_serial")
+fi
+if [[ "${usage_override:-false}" == "true" ]]; then
+  args+=(--override)
+fi
+scripts/integration/setup-yubikey-touch.sh "${args[@]}"
+'''
+
+[tasks."integration:setup:yubikey-touch-pin"]
+description = "Set up the optional YubiKey touch-and-PIN integration profile"
+usage = '''
+flag "--primary-uuid <uuid>" help="Primary 1Password Environment UUID; defaults to the integration-test environment UUID"
+flag "--serial <serial>" help="YubiKey serial number when more than one YubiKey is connected"
+flag "--override" help="Overwrite existing cage entries/files and the selected YubiKey PIV slot"
+'''
+run = '''
+#!/usr/bin/env bash
+set -eo pipefail
+args=()
+if [[ -n "${usage_primary_uuid:-}" ]]; then
+  args+=(--primary-uuid "$usage_primary_uuid")
+fi
+if [[ -n "${usage_serial:-}" ]]; then
+  args+=(--serial "$usage_serial")
+fi
+if [[ "${usage_override:-false}" == "true" ]]; then
+  args+=(--override)
+fi
+scripts/integration/setup-yubikey-touch-pin.sh "${args[@]}"
+'''
+
+[tasks."integration:run:all"]
+description = "Run all configured integration profile tests"
+file = "scripts/integration/run-all.sh"
+
+[tasks."integration:run:basic"]
+description = "Run only the basic integration profile test"
+file = "scripts/integration/run-basic.sh"
+
+[tasks."integration:run:secure-enclave"]
+description = "Run only the Secure Enclave integration profile test"
+file = "scripts/integration/run-secure-enclave.sh"
+
+[tasks."integration:run:yubikey-touch"]
+description = "Run only the YubiKey touch-only integration profile test"
+file = "scripts/integration/run-yubikey-touch.sh"
+
+[tasks."integration:run:yubikey-touch-pin"]
+description = "Run only the YubiKey touch-and-PIN integration profile test"
+file = "scripts/integration/run-yubikey-touch-pin.sh"
+
+[tasks.lint]
+description = "Run Go and GitHub Actions linters"
+run = [
+  "golangci-lint run",
+  "actionlint .github/workflows/*.yml",
+  "zizmor --pedantic --no-ignores .github/workflows",
+]
+
+[tasks.build]
+description = "Build cage"
+run = "go build -o ./dist/cage ."
