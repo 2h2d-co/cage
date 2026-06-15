@@ -2,6 +2,7 @@ package cage
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/spf13/cobra"
 )
@@ -114,7 +115,6 @@ func (a *App) confirmProviderOverwrite(cfg *Config, name string, path string, ye
 }
 
 func zeroBytes(data []byte) {
-	for i := range data {
-		data[i] = 0
-	}
+	clear(data)
+	runtime.KeepAlive(data)
 }

@@ -16,6 +16,7 @@ func readSecretInput(prompt string, forceStdin bool) ([]byte, error) {
 	if forceStdin || !stdinIsTerminal {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
+			zeroBytes(data)
 			return nil, fmt.Errorf("read token from stdin: %w", err)
 		}
 		return trimTrailingNewlines(data), nil
@@ -29,13 +30,19 @@ func readSecretInput(prompt string, forceStdin bool) ([]byte, error) {
 		err = errors.Join(err, printErr)
 	}
 	if err != nil {
+		zeroBytes(data)
 		return nil, fmt.Errorf("read secret input: %w", err)
 	}
 	return trimTrailingNewlines(data), nil
 }
 
 func trimTrailingNewlines(data []byte) []byte {
-	return []byte(strings.TrimRight(string(data), "\r\n"))
+	end := len(data)
+	for end > 0 && (data[end-1] == '\n' || data[end-1] == '\r') {
+		end--
+	}
+	zeroBytes(data[end:])
+	return data[:end]
 }
 
 func confirm(prompt string, assumeYes bool) (confirmed bool, err error) {

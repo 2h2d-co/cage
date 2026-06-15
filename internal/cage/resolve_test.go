@@ -31,17 +31,17 @@ func TestResolveVariablesReusesProviderClient(t *testing.T) {
 	decryptCalls := 0
 	factoryCalls := 0
 	app := &App{
-		decryptProviderToken: func(_ *Config, providerName string) (string, error) {
+		decryptProviderToken: func(_ *Config, providerName string) ([]byte, error) {
 			decryptCalls++
 			if providerName != "project" {
-				return "", fmt.Errorf("unexpected provider %q", providerName)
+				return nil, fmt.Errorf("unexpected provider %q", providerName)
 			}
-			return "token-project", nil
+			return []byte("token-project"), nil
 		},
-		newOnePasswordEnvironments: func(_ context.Context, token, _ string) (onepassword.EnvironmentsAPI, error) {
+		newOnePasswordEnvironments: func(_ context.Context, token []byte, _ string) (onepassword.EnvironmentsAPI, error) {
 			factoryCalls++
-			if token != "token-project" {
-				return nil, fmt.Errorf("unexpected token %q", token)
+			if string(token) != "token-project" {
+				return nil, fmt.Errorf("unexpected token %q", string(token))
 			}
 			return api, nil
 		},
@@ -66,6 +66,51 @@ func TestResolveVariablesReusesProviderClient(t *testing.T) {
 	wantCalls := []string{"dev-uuid", "stage-uuid"}
 	if !slices.Equal(calls, wantCalls) {
 		t.Fatalf("GetVariables calls = %#v, want %#v", calls, wantCalls)
+	}
+}
+
+func TestResolveVariablesZeroesProviderTokenAfterClientInitialization(t *testing.T) {
+	cfg := resolveTestConfig()
+	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project", UUID: "dev-uuid"}
+
+	token := []byte("token-project")
+	api := &fakeEnvironmentsAPI{responses: map[string]onepassword.GetVariablesResponse{
+		"dev-uuid": {Variables: []onepassword.EnvironmentVariable{{Name: "FOO", Value: "bar"}}},
+	}}
+	app := &App{
+		decryptProviderToken: func(*Config, string) ([]byte, error) { return token, nil },
+		newOnePasswordEnvironments: func(context.Context, []byte, string) (onepassword.EnvironmentsAPI, error) {
+			return api, nil
+		},
+	}
+
+	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !allZero(token) {
+		t.Fatalf("provider token was not zeroed: %q", string(token))
+	}
+}
+
+func TestResolveVariablesZeroesProviderTokenAfterClientInitializationError(t *testing.T) {
+	cfg := resolveTestConfig()
+	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project", UUID: "dev-uuid"}
+
+	token := []byte("token-project")
+	app := &App{
+		decryptProviderToken: func(*Config, string) ([]byte, error) { return token, nil },
+		newOnePasswordEnvironments: func(context.Context, []byte, string) (onepassword.EnvironmentsAPI, error) {
+			return nil, fmt.Errorf("boom")
+		},
+	}
+
+	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !allZero(token) {
+		t.Fatalf("provider token was not zeroed after error: %q", string(token))
 	}
 }
 
@@ -103,8 +148,8 @@ func TestResolveVariablesFetchesConcurrentlyAndMergesInSelectionOrder(t *testing
 		},
 	}
 	app := &App{
-		decryptProviderToken: func(_ *Config, _ string) (string, error) { return "token", nil },
-		newOnePasswordEnvironments: func(context.Context, string, string) (onepassword.EnvironmentsAPI, error) {
+		decryptProviderToken: func(_ *Config, _ string) ([]byte, error) { return []byte("token"), nil },
+		newOnePasswordEnvironments: func(context.Context, []byte, string) (onepassword.EnvironmentsAPI, error) {
 			return api, nil
 		},
 	}
@@ -130,8 +175,8 @@ func TestResolveVariablesRejectsInvalidVariableName(t *testing.T) {
 		},
 	}}
 	app := &App{
-		decryptProviderToken: func(_ *Config, _ string) (string, error) { return "token", nil },
-		newOnePasswordEnvironments: func(context.Context, string, string) (onepassword.EnvironmentsAPI, error) {
+		decryptProviderToken: func(_ *Config, _ string) ([]byte, error) { return []byte("token"), nil },
+		newOnePasswordEnvironments: func(context.Context, []byte, string) (onepassword.EnvironmentsAPI, error) {
 			return api, nil
 		},
 	}
@@ -214,4 +259,13 @@ func (f *fakeEnvironmentsAPI) callsSnapshot() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.calls...)
+}
+
+func allZero(data []byte) bool {
+	for _, value := range data {
+		if value != 0 {
+			return false
+		}
+	}
+	return true
 }

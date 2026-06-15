@@ -193,9 +193,12 @@ func requestPluginValue(name, prompt string, secret bool) (value string, err err
 			err = errors.Join(err, printErr)
 		}
 		if err != nil {
+			zeroBytes(data)
 			return "", err
 		}
-		return string(data), nil
+		value := string(data)
+		zeroBytes(data)
+		return value, nil
 	}
 
 	if _, err := fmt.Fprintf(os.Stderr, "age-plugin-%s: %s", name, prompt); err != nil {

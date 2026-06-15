@@ -1,10 +1,12 @@
 package cage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -12,9 +14,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type providerTokenDecryptor func(*Config, string) (string, error)
+type providerTokenDecryptor func(*Config, string) ([]byte, error)
 
-type onePasswordEnvironmentsFactory func(context.Context, string, string) (onepassword.EnvironmentsAPI, error)
+type onePasswordEnvironmentsFactory func(context.Context, []byte, string) (onepassword.EnvironmentsAPI, error)
 
 // Selection contains profile and environment names selected for resolution.
 type Selection struct {
@@ -112,6 +114,7 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 			return nil, fmt.Errorf("provider %q for environment %q: %w", environment.Provider, environmentName, err)
 		}
 		client, err := newEnvironments(ctx, token, a.version)
+		zeroBytes(token)
 		if err != nil {
 			return nil, fmt.Errorf("initialize 1Password SDK client for provider %q: %w", environment.Provider, err)
 		}
@@ -164,15 +167,32 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 	return resolved, nil
 }
 
-func newOnePasswordEnvironments(ctx context.Context, token, version string) (onepassword.EnvironmentsAPI, error) {
+type onePasswordEnvironmentClient struct {
+	client       *onepassword.Client
+	environments onepassword.EnvironmentsAPI
+}
+
+func (c *onePasswordEnvironmentClient) GetVariables(ctx context.Context, environmentID string) (onepassword.GetVariablesResponse, error) {
+	response, err := c.environments.GetVariables(ctx, environmentID)
+	runtime.KeepAlive(c.client)
+	return response, err
+}
+
+func newOnePasswordEnvironments(ctx context.Context, token []byte, version string) (onepassword.EnvironmentsAPI, error) {
+	// The 1Password SDK currently requires a string token and retains it in its client config.
+	// This is the unavoidable SDK boundary; the caller still zeros the Cage-owned []byte token.
+	tokenString := string(token)
 	client, err := onepassword.NewClient(ctx,
-		onepassword.WithServiceAccountToken(token),
+		onepassword.WithServiceAccountToken(tokenString),
 		onepassword.WithIntegrationInfo("cage", version),
 	)
 	if err != nil {
 		return nil, err
 	}
-	return client.Environments(), nil
+	return &onePasswordEnvironmentClient{
+		client:       client,
+		environments: client.Environments(),
+	}, nil
 }
 
 type environmentLoadResult struct {
@@ -195,22 +215,23 @@ func validateEnvironmentVariableName(name string) error {
 	return nil
 }
 
-func decryptProviderToken(cfg *Config, providerName string) (string, error) {
+// decryptProviderToken returns an owned plaintext token buffer. The caller must zero it.
+func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 	provider, ok := cfg.Providers[providerName]
 	if !ok {
-		return "", fmt.Errorf("unknown provider %q", providerName)
+		return nil, fmt.Errorf("unknown provider %q", providerName)
 	}
 	if provider.Type != ProviderType1Password {
-		return "", fmt.Errorf("unsupported provider type %q", provider.Type)
+		return nil, fmt.Errorf("unsupported provider type %q", provider.Type)
 	}
 	identity, ok := cfg.Identities[provider.Identity]
 	if !ok {
-		return "", fmt.Errorf("provider references unknown identity %q", provider.Identity)
+		return nil, fmt.Errorf("provider references unknown identity %q", provider.Identity)
 	}
 
 	ciphertext, err := os.ReadFile(filepath.Clean(cfg.ResolveFile(provider.File)))
 	if err != nil {
-		return "", fmt.Errorf("read encrypted provider file: %w", err)
+		return nil, fmt.Errorf("read encrypted provider file: %w", err)
 	}
 	switch identity.Type {
 	case IdentityTypeSecureEnclave:
@@ -220,11 +241,12 @@ func decryptProviderToken(cfg *Config, providerName string) (string, error) {
 	}
 	plaintext, err := decryptWithIdentityFile(ciphertext, cfg.ResolveFile(identity.File))
 	if err != nil {
-		return "", fmt.Errorf("decrypt encrypted provider file: %w", err)
+		return nil, fmt.Errorf("decrypt encrypted provider file: %w", err)
 	}
-	token := string(trimTrailingNewlines(plaintext))
-	if strings.TrimSpace(token) == "" {
-		return "", fmt.Errorf("decrypted provider token is empty")
+	token := trimTrailingNewlines(plaintext)
+	if len(bytes.TrimSpace(token)) == 0 {
+		zeroBytes(plaintext)
+		return nil, fmt.Errorf("decrypted provider token is empty")
 	}
 	return token, nil
 }
