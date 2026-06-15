@@ -68,7 +68,7 @@ With mise shell integration active, `cage:local` is an alias for `go run .`, and
 
 ## Config
 
-The config file is `$XDG_CONFIG_HOME/cage/config.toml`, falling back to `~/.config/cage/config.toml` when `XDG_CONFIG_HOME` is unset. Set `CAGE_CONFIG=PATH` to use another config, or pass `--config PATH` to override both. Relative files are resolved from the config file directory.
+The config file is `$XDG_CONFIG_HOME/cage/config.toml`, falling back to `~/.config/cage/config.toml` when `XDG_CONFIG_HOME` is unset. Set `CAGE_CONFIG=PATH` to use another config, or pass `--config PATH` to override both. Identity and provider file paths must be relative paths that stay within the config file directory.
 
 Example:
 
@@ -238,6 +238,8 @@ A checked-in starter manpage is also available at `docs/man/cage.1`.
 
 - Provider tokens are decrypted only in memory to initialize the 1Password SDK.
 - 1Password Environments are not cached in memory across environment loads and are never cached on disk.
+- Config directories, config files, identity files, and provider files must be owned by the current user and not accessible by group or others.
+- Cage strips common credential, injection, and debug environment variables from age plugin subprocesses.
 - Errors are redacted for common secret-looking values before cage prints them.
 - Use `--verbose` or `--debug` for diagnostics; secret values are not intentionally logged.
 

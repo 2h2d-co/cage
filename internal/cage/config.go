@@ -103,11 +103,21 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	cfg := emptyConfig(expanded)
+	if err := ensurePrivateDirIfExists(cfg.Dir, "config directory"); err != nil {
+		return nil, err
+	}
 
-	data, err := os.ReadFile(filepath.Clean(expanded))
+	info, err := os.Stat(filepath.Clean(expanded))
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("stat config %s: %w", expanded, err)
+	}
+	if err := ensurePrivateInfo(expanded, "config file", info, false, 0o600); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Clean(expanded))
 	if err != nil {
 		return nil, fmt.Errorf("read config %s: %w", expanded, err)
 	}
@@ -151,12 +161,42 @@ func expandPath(path string) (string, error) {
 	return path, nil
 }
 
-// ResolveFile resolves a config-relative file path.
+// ResolveFile resolves a validated config-relative file path.
 func (c *Config) ResolveFile(file string) string {
-	if filepath.IsAbs(file) {
-		return filepath.Clean(file)
-	}
 	return filepath.Clean(filepath.Join(c.Dir, file))
+}
+
+func (c *Config) validateConfigFilePath(field string, file string) error {
+	if strings.ContainsRune(file, '\x00') {
+		return fmt.Errorf("%s must not contain NUL", field)
+	}
+	if filepath.IsAbs(file) {
+		return fmt.Errorf("%s must be a relative path", field)
+	}
+	cleaned := filepath.Clean(file)
+	if cleaned == "." {
+		return fmt.Errorf("%s must name a file", field)
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s must stay within config directory", field)
+	}
+
+	configDir, err := filepath.Abs(c.Dir)
+	if err != nil {
+		return fmt.Errorf("resolve config directory %s: %w", c.Dir, err)
+	}
+	resolved, err := filepath.Abs(c.ResolveFile(cleaned))
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", field, err)
+	}
+	relative, err := filepath.Rel(configDir, resolved)
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", field, err)
+	}
+	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return fmt.Errorf("%s must stay within config directory", field)
+	}
+	return nil
 }
 
 // ValidateCreatedName validates names used for cage-created files.
@@ -188,19 +228,31 @@ func (c *Config) loadRaw(raw map[string]any) error {
 		return err
 	}
 	for name, value := range m {
-		entry, err := tableValue("identities."+name, value)
+		entryName := "identities." + name
+		entry, err := tableValue(entryName, value)
 		if err != nil {
 			return err
 		}
-		identity := IdentityConfig{
-			Type: stringValue(entry, "type"),
-			File: stringValue(entry, "file"),
+		if err := ensureAllowedKeys(entryName, entry, "type", "file"); err != nil {
+			return err
 		}
+		identityType, err := stringField(entryName, entry, "type")
+		if err != nil {
+			return err
+		}
+		file, err := stringField(entryName, entry, "file")
+		if err != nil {
+			return err
+		}
+		identity := IdentityConfig{Type: identityType, File: file}
 		if identity.Type != IdentityTypeBasic && identity.Type != IdentityTypeYubiKey && identity.Type != IdentityTypeSecureEnclave {
-			return fmt.Errorf("identities.%s has unsupported type %q", name, identity.Type)
+			return fmt.Errorf("%s has unsupported type %q", entryName, identity.Type)
 		}
 		if identity.File == "" {
-			return fmt.Errorf("identities.%s file is required", name)
+			return fmt.Errorf("%s file is required", entryName)
+		}
+		if err := c.validateConfigFilePath(entryName+".file", identity.File); err != nil {
+			return err
 		}
 		c.Identities[name] = identity
 	}
@@ -210,23 +262,38 @@ func (c *Config) loadRaw(raw map[string]any) error {
 		return err
 	}
 	for name, value := range m {
-		entry, err := tableValue("providers."+name, value)
+		entryName := "providers." + name
+		entry, err := tableValue(entryName, value)
 		if err != nil {
 			return err
 		}
-		provider := ProviderConfig{
-			Type:     stringValue(entry, "type"),
-			Identity: stringValue(entry, "identity"),
-			File:     stringValue(entry, "file"),
+		if err := ensureAllowedKeys(entryName, entry, "type", "identity", "file"); err != nil {
+			return err
 		}
+		providerType, err := stringField(entryName, entry, "type")
+		if err != nil {
+			return err
+		}
+		identity, err := stringField(entryName, entry, "identity")
+		if err != nil {
+			return err
+		}
+		file, err := stringField(entryName, entry, "file")
+		if err != nil {
+			return err
+		}
+		provider := ProviderConfig{Type: providerType, Identity: identity, File: file}
 		if provider.Type != ProviderType1Password {
-			return fmt.Errorf("providers.%s has unsupported type %q", name, provider.Type)
+			return fmt.Errorf("%s has unsupported type %q", entryName, provider.Type)
 		}
 		if provider.Identity == "" {
-			return fmt.Errorf("providers.%s identity is required", name)
+			return fmt.Errorf("%s identity is required", entryName)
 		}
 		if provider.File == "" {
-			return fmt.Errorf("providers.%s file is required", name)
+			return fmt.Errorf("%s file is required", entryName)
+		}
+		if err := c.validateConfigFilePath(entryName+".file", provider.File); err != nil {
+			return err
 		}
 		c.Providers[name] = provider
 	}
@@ -236,23 +303,35 @@ func (c *Config) loadRaw(raw map[string]any) error {
 		return err
 	}
 	for name, value := range m {
-		entry, err := tableValue("environments."+name, value)
+		entryName := "environments." + name
+		entry, err := tableValue(entryName, value)
 		if err != nil {
 			return err
 		}
-		environment := EnvironmentConfig{
-			Type:     stringValue(entry, "type"),
-			Provider: stringValue(entry, "provider"),
-			UUID:     stringValue(entry, "uuid"),
+		if err := ensureAllowedKeys(entryName, entry, "type", "provider", "uuid"); err != nil {
+			return err
 		}
+		environmentType, err := stringField(entryName, entry, "type")
+		if err != nil {
+			return err
+		}
+		provider, err := stringField(entryName, entry, "provider")
+		if err != nil {
+			return err
+		}
+		uuid, err := stringField(entryName, entry, "uuid")
+		if err != nil {
+			return err
+		}
+		environment := EnvironmentConfig{Type: environmentType, Provider: provider, UUID: uuid}
 		if environment.Type != EnvironmentType1Password {
-			return fmt.Errorf("environments.%s has unsupported type %q", name, environment.Type)
+			return fmt.Errorf("%s has unsupported type %q", entryName, environment.Type)
 		}
 		if environment.Provider == "" {
-			return fmt.Errorf("environments.%s provider is required", name)
+			return fmt.Errorf("%s provider is required", entryName)
 		}
 		if environment.UUID == "" {
-			return fmt.Errorf("environments.%s uuid is required", name)
+			return fmt.Errorf("%s uuid is required", entryName)
 		}
 		c.Environments[name] = environment
 	}
@@ -309,13 +388,29 @@ func tableValue(name string, value any) (map[string]any, error) {
 	return m, nil
 }
 
-func stringValue(m map[string]any, key string) string {
+func ensureAllowedKeys(name string, m map[string]any, allowedKeys ...string) error {
+	allowed := map[string]bool{}
+	for _, key := range allowedKeys {
+		allowed[key] = true
+	}
+	for key := range m {
+		if !allowed[key] {
+			return fmt.Errorf("%s has unsupported key %q", name, key)
+		}
+	}
+	return nil
+}
+
+func stringField(name string, m map[string]any, key string) (string, error) {
 	value, ok := m[key]
 	if !ok {
-		return ""
+		return "", nil
 	}
-	s, _ := value.(string)
-	return s
+	s, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("%s.%s must be a string", name, key)
+	}
+	return s, nil
 }
 
 func profileEnvironments(name string, value any) ([]string, error) {
@@ -323,6 +418,9 @@ func profileEnvironments(name string, value any) ([]string, error) {
 	case []any:
 		return stringArray(name, v)
 	case map[string]any:
+		if err := ensureAllowedKeys(name, v, "environments"); err != nil {
+			return nil, err
+		}
 		environments, ok := v["environments"]
 		if !ok {
 			return nil, fmt.Errorf("%s environments is required", name)
@@ -392,7 +490,10 @@ func (c *Config) Write() error {
 	if err := os.MkdirAll(c.Dir, 0o700); err != nil {
 		return fmt.Errorf("create config directory %s: %w", c.Dir, err)
 	}
-	if err := atomicWriteFile(c.Path, []byte(b.String()), 0o600); err != nil {
+	if err := ensurePrivateDir(c.Dir, "config directory"); err != nil {
+		return err
+	}
+	if err := atomicWriteFile(c.Path, []byte(b.String())); err != nil {
 		return fmt.Errorf("write config %s: %w", c.Path, err)
 	}
 	c.Exists = true

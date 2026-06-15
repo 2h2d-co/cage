@@ -16,10 +16,14 @@ import (
 )
 
 func readAgeIdentities(path string) ([]age.Identity, error) {
+	if err := ensurePrivateFile(path, "identity file"); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("read identity file %s: %w", path, err)
 	}
+	defer zeroBytes(data)
 
 	var identities []age.Identity
 	scanner := bufio.NewScanner(bytes.NewReader(data))
@@ -76,18 +80,28 @@ func encryptWithSingleIdentity(plaintext []byte, identityFile string) ([]byte, e
 	}
 
 	var out bytes.Buffer
-	writer, err := age.Encrypt(&out, recipient)
-	if err != nil {
-		return nil, withAgeInstallHint(err)
-	}
-	if _, err := writer.Write(plaintext); err != nil {
-		if closeErr := writer.Close(); closeErr != nil {
-			return nil, errors.Join(err, withAgeInstallHint(closeErr))
+	encrypt := func() error {
+		writer, err := age.Encrypt(&out, recipient)
+		if err != nil {
+			return withAgeInstallHint(err)
 		}
-		return nil, err
+		if _, err := writer.Write(plaintext); err != nil {
+			if closeErr := writer.Close(); closeErr != nil {
+				return errors.Join(err, withAgeInstallHint(closeErr))
+			}
+			return err
+		}
+		if err := writer.Close(); err != nil {
+			return withAgeInstallHint(err)
+		}
+		return nil
 	}
-	if err := writer.Close(); err != nil {
-		return nil, withAgeInstallHint(err)
+	if identityUsesPlugin(identities[0]) {
+		if err := withSanitizedPluginEnvironment(encrypt); err != nil {
+			return nil, err
+		}
+	} else if err := encrypt(); err != nil {
+		return nil, err
 	}
 	return out.Bytes(), nil
 }
@@ -97,15 +111,40 @@ func decryptWithIdentityFile(ciphertext []byte, identityFile string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	reader, err := age.Decrypt(bytes.NewReader(ciphertext), identities...)
-	if err != nil {
-		return nil, withAgeInstallHint(err)
+	var plaintext []byte
+	decrypt := func() error {
+		reader, err := age.Decrypt(bytes.NewReader(ciphertext), identities...)
+		if err != nil {
+			return withAgeInstallHint(err)
+		}
+		plaintext, err = io.ReadAll(reader)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
-	plaintext, err := io.ReadAll(reader)
-	if err != nil {
+	if identitiesUsePlugin(identities) {
+		if err := withSanitizedPluginEnvironment(decrypt); err != nil {
+			return nil, err
+		}
+	} else if err := decrypt(); err != nil {
 		return nil, err
 	}
 	return plaintext, nil
+}
+
+func identitiesUsePlugin(identities []age.Identity) bool {
+	for _, identity := range identities {
+		if identityUsesPlugin(identity) {
+			return true
+		}
+	}
+	return false
+}
+
+func identityUsesPlugin(identity age.Identity) bool {
+	_, ok := identity.(*plugin.Identity)
+	return ok
 }
 
 func recipientForIdentity(identity age.Identity) (age.Recipient, error) {

@@ -1,5 +1,5 @@
 # Copy to $XDG_CONFIG_HOME/cage/config.toml (or ~/.config/cage/config.toml when XDG_CONFIG_HOME is unset), or set CAGE_CONFIG to another path, and replace UUIDs.
-# Relative files are resolved from the config file directory.
+# Identity and provider files must be relative paths under the config file directory.
 
 [identities]
 local = { type = "basic", file = "local.identity" }

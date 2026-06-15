@@ -43,7 +43,7 @@ func TestEndToEnd(t *testing.T) {
 	bin := buildCage(t)
 
 	reportedSubtest(t, report, "identity basic temporary lifecycle", "create/list/delete/provider/environment/profile", func(t *testing.T) {
-		configPath := filepath.Join(t.TempDir(), "config.toml")
+		configPath := filepath.Join(privateTempDir(t), "config.toml")
 		configEnv := []string{"CAGE_CONFIG=" + configPath}
 
 		runCage(t, bin, configEnv, "", "identity", "basic", "create", "integration-local")
@@ -234,6 +234,15 @@ func requireDarwin(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("cage is macOS-only")
 	}
+}
+
+func privateTempDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 func buildCage(t *testing.T) string {

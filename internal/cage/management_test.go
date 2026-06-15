@@ -13,7 +13,7 @@ func TestEnvironmentAndProfileCommandsManageConfig(t *testing.T) {
 		t.Skip("cage commands are macOS-only")
 	}
 
-	path := filepath.Join(t.TempDir(), "config.toml")
+	path := filepath.Join(privateTempDir(t), "config.toml")
 	cfg := emptyConfig(path)
 	cfg.Identities["local"] = IdentityConfig{Type: IdentityTypeBasic, File: "local.identity"}
 	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "local", File: "project1.1p.age"}
@@ -76,7 +76,7 @@ func TestEnvironmentAndProfileCommandsValidateReferences(t *testing.T) {
 		t.Skip("cage commands are macOS-only")
 	}
 
-	path := filepath.Join(t.TempDir(), "config.toml")
+	path := filepath.Join(privateTempDir(t), "config.toml")
 	cfg := emptyConfig(path)
 	cfg.Identities["local"] = IdentityConfig{Type: IdentityTypeBasic, File: "local.identity"}
 	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "local", File: "project1.1p.age"}

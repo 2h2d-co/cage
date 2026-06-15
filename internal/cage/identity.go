@@ -375,6 +375,9 @@ func (a *App) newIdentityDeleteCommand(identityType string, label string) *cobra
 				return fmt.Errorf("identity %q has type %q, not %q", name, identity.Type, identityType)
 			}
 
+			if err := cfg.validateConfigFilePath("identities."+name+".file", identity.File); err != nil {
+				return err
+			}
 			path := cfg.ResolveFile(identity.File)
 			if identityType == IdentityTypeYubiKey {
 				if _, err := fmt.Fprintln(a.errOut, "note: age-plugin-yubikey does not expose key-material deletion; cage will remove only config and the local identity file"); err != nil {
@@ -437,14 +440,21 @@ func (a *App) listConfiguredIdentities(cfg *Config, identityType string, label s
 		count++
 		path := cfg.ResolveFile(identity.File)
 		status := "missing"
+		recipient := "-"
 		if exists, err := fileExists(path); err != nil {
 			status = "error: " + err.Error()
 		} else if exists {
+			if err := ensurePrivateFile(path, "identity file"); err != nil {
+				return err
+			}
 			status = "present"
-		}
-		recipient := firstRecipientInIdentityFile(path)
-		if recipient == "" {
-			recipient = "-"
+			foundRecipient, err := firstRecipientInIdentityFile(path)
+			if err != nil {
+				return err
+			}
+			if foundRecipient != "" {
+				recipient = foundRecipient
+			}
 		}
 		if _, err := fmt.Fprintf(a.out, "  %s\tfile=%s\tstatus=%s\trecipient=%s\n", name, identity.File, status, recipient); err != nil {
 			return err
@@ -457,21 +467,22 @@ func (a *App) listConfiguredIdentities(cfg *Config, identityType string, label s
 	return nil
 }
 
-func firstRecipientInIdentityFile(path string) string {
+func firstRecipientInIdentityFile(path string) (string, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("read identity file %s: %w", path, err)
 	}
+	defer zeroBytes(data)
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 		if recipient := ageRecipientPattern.FindString(trimmed); recipient != "" {
-			return recipient
+			return recipient, nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func requireTool(binary string) error {
@@ -532,7 +543,7 @@ func runPluginProcessCaptureStdout(binary string, args []string, stdout io.Write
 	argv := append([]string{binary}, args...)
 	process, err := os.StartProcess(path, argv, &os.ProcAttr{
 		Files: []*os.File{stdin, stdoutW, stderr},
-		Env:   os.Environ(),
+		Env:   pluginEnvironment(os.Environ()),
 	})
 	closeErr := stdoutW.Close()
 	if err != nil {
@@ -611,7 +622,7 @@ func runPluginProcess(binary string, args []string, stdout io.Writer, stderr io.
 	argv := append([]string{binary}, args...)
 	process, err := os.StartProcess(path, argv, &os.ProcAttr{
 		Files: []*os.File{os.Stdin, stdoutW, stderrW},
-		Env:   os.Environ(),
+		Env:   pluginEnvironment(os.Environ()),
 	})
 	closeErr := errors.Join(stdoutW.Close(), stderrW.Close())
 	if err != nil {

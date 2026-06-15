@@ -251,6 +251,26 @@ AGE-PLUGIN-YUBIKEY-TEST
 	}
 }
 
+func TestDecryptProviderTokenRejectsInsecureProviderPermissions(t *testing.T) {
+	dir := t.TempDir()
+	cfg := emptyConfig(filepath.Join(dir, "config.toml"))
+	cfg.Identities["identity"] = IdentityConfig{Type: IdentityTypeBasic, File: "identity.age"}
+	cfg.Providers["project"] = ProviderConfig{Type: ProviderType1Password, Identity: "identity", File: "project.1p.age"}
+	providerPath := cfg.ResolveFile("project.1p.age")
+	if err := os.WriteFile(providerPath, []byte("not age ciphertext"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	makeInsecurePermissions(t, providerPath, 0o644)
+
+	_, err := decryptProviderToken(cfg, "project")
+	if err == nil {
+		t.Fatal("decryptProviderToken accepted group-readable provider file")
+	}
+	if !strings.Contains(err.Error(), "accessible by group or others") {
+		t.Fatalf("error = %q, want permission error", err)
+	}
+}
+
 func resolveTestConfig() *Config {
 	cfg := emptyConfig("/tmp/cage-test/config.toml")
 	cfg.Identities["identity"] = IdentityConfig{Type: IdentityTypeBasic, File: "identity.age"}

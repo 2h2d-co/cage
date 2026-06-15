@@ -229,7 +229,11 @@ func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 		return nil, fmt.Errorf("provider references unknown identity %q", provider.Identity)
 	}
 
-	ciphertext, err := os.ReadFile(filepath.Clean(cfg.ResolveFile(provider.File)))
+	providerPath := cfg.ResolveFile(provider.File)
+	if err := ensurePrivateFile(providerPath, "provider file"); err != nil {
+		return nil, err
+	}
+	ciphertext, err := os.ReadFile(filepath.Clean(providerPath))
 	if err != nil {
 		return nil, fmt.Errorf("read encrypted provider file: %w", err)
 	}

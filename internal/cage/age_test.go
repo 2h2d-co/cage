@@ -1,7 +1,9 @@
 package cage
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"filippo.io/age"
@@ -22,6 +24,26 @@ func TestPluginMessagesKeepGenericFallbacks(t *testing.T) {
 	}
 	if got, want := pluginWaitMessage("se"), "age-plugin-se is waiting for hardware or user confirmation"; got != want {
 		t.Fatalf("pluginWaitMessage() = %q, want %q", got, want)
+	}
+}
+
+func TestReadAgeIdentitiesRejectsInsecurePermissions(t *testing.T) {
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityFile := filepath.Join(t.TempDir(), "test.identity")
+	if err := os.WriteFile(identityFile, []byte(identity.String()+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	makeInsecurePermissions(t, identityFile, 0o644)
+
+	_, err = readAgeIdentities(identityFile)
+	if err == nil {
+		t.Fatal("readAgeIdentities accepted group-readable identity file")
+	}
+	if !strings.Contains(err.Error(), "accessible by group or others") {
+		t.Fatalf("error = %q, want permission error", err)
 	}
 }
 

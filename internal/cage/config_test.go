@@ -5,11 +5,28 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 )
 
+func privateTempDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func makeInsecurePermissions(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	if err := syscall.Chmod(path, uint32(mode)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadConfigSupportsInlineAndTableForms(t *testing.T) {
-	dir := t.TempDir()
+	dir := privateTempDir(t)
 	path := filepath.Join(dir, "config.toml")
 	data := `
 [identities]
@@ -91,7 +108,7 @@ func TestDefaultConfigPathUsesXDGConfigHomeWithHomeFallback(t *testing.T) {
 }
 
 func TestLoadConfigUsesCAGEConfig(t *testing.T) {
-	dir := t.TempDir()
+	dir := privateTempDir(t)
 	path := filepath.Join(dir, "config.toml")
 	data := `
 [identities]
@@ -133,8 +150,166 @@ override = { type = "basic", file = "override.identity" }
 	}
 }
 
+func TestLoadConfigRejectsUnsafeFilePaths(t *testing.T) {
+	dir := privateTempDir(t)
+	cases := map[string]string{
+		"absolute identity": `
+[identities]
+local = { type = "basic", file = "/tmp/local.identity" }
+`,
+		"traversing identity": `
+[identities]
+local = { type = "basic", file = "../local.identity" }
+`,
+		"traversing provider": `
+[identities]
+local = { type = "basic", file = "local.identity" }
+[providers]
+project = { type = "1password", identity = "local", file = "../project.1p.age" }
+`,
+	}
+
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".toml")
+			if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(path)
+			if err == nil {
+				t.Fatal("LoadConfig accepted unsafe file path")
+			}
+			if !strings.Contains(err.Error(), "relative path") && !strings.Contains(err.Error(), "within config directory") {
+				t.Fatalf("error = %q, want unsafe path error", err)
+			}
+		})
+	}
+}
+
+func TestLoadConfigAllowsSubdirectoryFilePaths(t *testing.T) {
+	dir := privateTempDir(t)
+	path := filepath.Join(dir, "config.toml")
+	data := `
+[identities]
+local = { type = "basic", file = "identities/local.identity" }
+
+[providers]
+project = { type = "1password", identity = "local", file = "providers/project.1p.age" }
+`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "identities", "local.identity")
+	if got := cfg.ResolveFile(cfg.Identities["local"].File); got != want {
+		t.Fatalf("resolved identity path = %q, want %q", got, want)
+	}
+}
+
+func TestLoadConfigRejectsUnknownNestedKeys(t *testing.T) {
+	dir := privateTempDir(t)
+	cases := map[string]string{
+		"identity extra": `
+[identities]
+local = { type = "basic", file = "local.identity", token = "plain" }
+`,
+		"provider extra": `
+[identities]
+local = { type = "basic", file = "local.identity" }
+[providers]
+project = { type = "1password", identity = "local", file = "project.1p.age", token = "plain" }
+`,
+		"environment extra": `
+[environments]
+dev = { type = "1password-environment", provider = "project", uuid = "dev", token = "plain" }
+`,
+		"profile extra": `
+[profiles.default]
+environments = ["dev"]
+provider = "project"
+`,
+	}
+
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".toml")
+			if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(path)
+			if err == nil {
+				t.Fatal("LoadConfig accepted an unknown nested key")
+			}
+			if !strings.Contains(err.Error(), "unsupported key") {
+				t.Fatalf("error = %q, want unsupported key", err)
+			}
+		})
+	}
+}
+
+func TestLoadConfigRejectsNonStringFields(t *testing.T) {
+	dir := privateTempDir(t)
+	path := filepath.Join(dir, "config.toml")
+	data := `
+[identities]
+local = { type = "basic", file = 123 }
+`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig accepted a non-string field")
+	}
+	if !strings.Contains(err.Error(), "identities.local.file must be a string") {
+		t.Fatalf("error = %q, want precise type error", err)
+	}
+}
+
+func TestLoadConfigRejectsInsecureConfigPermissions(t *testing.T) {
+	dir := privateTempDir(t)
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	makeInsecurePermissions(t, path, 0o644)
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig accepted group-readable config")
+	}
+	if !strings.Contains(err.Error(), "accessible by group or others") {
+		t.Fatalf("error = %q, want permission error", err)
+	}
+}
+
+func TestLoadConfigRejectsInsecureConfigDirectoryPermissions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cage")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	makeInsecurePermissions(t, dir, 0o755)
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig accepted searchable config directory")
+	}
+	if !strings.Contains(err.Error(), "accessible by group or others") {
+		t.Fatalf("error = %q, want permission error", err)
+	}
+}
+
 func TestConfigWriteUsesExpectedCreatedSchema(t *testing.T) {
-	dir := t.TempDir()
+	dir := privateTempDir(t)
 	cfg := emptyConfig(filepath.Join(dir, "config.toml"))
 	cfg.Identities["work1"] = IdentityConfig{Type: IdentityTypeBasic, File: "work1.identity"}
 	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "work1", File: "project1.1p.age"}

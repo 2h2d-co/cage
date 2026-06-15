@@ -6,6 +6,14 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+### Security
+
+- Strip common credential, injection, and debug environment variables from age plugin subprocesses.
+- Reject identity and provider file paths that are absolute or escape the config directory.
+- Reject config directories, config files, identity files, and provider files not owned by the current user or accessible by group/others.
+- Reject unsupported nested TOML config keys and non-string scalar fields.
+- Remove a redundant post-rename chmod from atomic writes and sync temp files before rename.
+
 ## [0.0.1] - 2026-06-15
 
 ### Added
