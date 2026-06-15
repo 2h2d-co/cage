@@ -16,7 +16,9 @@ jobs:
     name: GoReleaser
     runs-on: macos-latest
     permissions:
+      attestations: write # Required for GitHub artifact attestations used by mise's github backend.
       contents: write # Required for GoReleaser to create GitHub releases and upload release assets.
+      id-token: write # Required for Sigstore signing of artifact attestations.
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -38,3 +40,8 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest release archives
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/*.tar.gz

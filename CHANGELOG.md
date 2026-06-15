@@ -6,6 +6,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-06-15
+
 ### Added
 
 - Initial macOS-only `cage` CLI.
@@ -20,6 +22,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 - End-to-end integration suite with basic, Secure Enclave, and YubiKey profiles.
 - Mise setup/run tasks and standalone scripts for integration profiles.
 - Terminal action-needed prompts for hardware-backed decrypt flows.
+- GitHub release packaging for macOS Apple Silicon (`darwin_arm64`) compatible with mise's `github:` backend.
 
 ### Security
 
