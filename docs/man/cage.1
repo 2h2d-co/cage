@@ -93,9 +93,9 @@ Delete a profile.
 Print a single resolved value. Missing variables exit with status 1.
 .TP
 .B cage get '*'
-Print all resolved variables as KEY=value lines. Use
+Print all resolved variables as KEY=value lines for simple values. Values are not shell-quoted; multiline values can span output lines. Use
 .B --json
-for a JSON object.
+for multiline or machine-readable output.
 .TP
 .B cage exec -- COMMAND
 Replace cage with COMMAND where supported, inheriting the parent environment overlaid with resolved variables. OP_SERVICE_ACCOUNT_TOKEN is removed from the child environment.
