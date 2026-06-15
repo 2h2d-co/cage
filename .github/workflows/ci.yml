@@ -12,10 +12,13 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  MISE_LOCKED: "1"
+
 jobs:
   test:
     name: Test
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -25,7 +28,9 @@ jobs:
       - name: Install mise tools
         uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
+          version: 2026.6.1
           install: true
+          install_args: --locked go
           cache: true
 
       - name: Check formatting
@@ -47,7 +52,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -57,7 +62,9 @@ jobs:
       - name: Install mise tools
         uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
+          version: 2026.6.1
           install: true
+          install_args: --locked go golangci-lint actionlint zizmor
           cache: true
 
       - name: Go lint

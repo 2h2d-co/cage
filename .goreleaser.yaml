@@ -2,16 +2,13 @@ version: 2
 
 project_name: cage
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - id: cage
     main: .
     binary: cage
     env:
       - CGO_ENABLED=1
+      - GOFLAGS=-mod=readonly
     goos:
       - darwin
     goarch:
