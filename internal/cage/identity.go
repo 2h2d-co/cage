@@ -7,17 +7,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"regexp"
-	"strings"
 	"sync"
 
 	"filippo.io/age"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
-
-var ageRecipientPattern = regexp.MustCompile(`age1[a-z0-9]+`)
 
 func (a *App) newIdentityCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -468,21 +463,14 @@ func (a *App) listConfiguredIdentities(cfg *Config, identityType string, label s
 }
 
 func firstRecipientInIdentityFile(path string) (string, error) {
-	data, err := os.ReadFile(filepath.Clean(path))
+	recipients, err := readIdentityFilePublicRecipients(path)
 	if err != nil {
-		return "", fmt.Errorf("read identity file %s: %w", path, err)
+		return "", err
 	}
-	defer zeroBytes(data)
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if recipient := ageRecipientPattern.FindString(trimmed); recipient != "" {
-			return recipient, nil
-		}
+	if len(recipients) == 0 {
+		return "", nil
 	}
-	return "", nil
+	return recipients[0], nil
 }
 
 func requireTool(binary string) error {

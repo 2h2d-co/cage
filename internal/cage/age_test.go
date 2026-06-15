@@ -53,7 +53,8 @@ func TestEncryptDecryptWithSingleNativeIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	identityFile := filepath.Join(t.TempDir(), "test.identity")
-	if err := writeSecretFile(identityFile, []byte(identity.String()+"\n")); err != nil {
+	identityData := []byte("# public key: " + identity.Recipient().String() + "\n" + identity.String() + "\n")
+	if err := writeSecretFile(identityFile, identityData); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,5 +68,55 @@ func TestEncryptDecryptWithSingleNativeIdentity(t *testing.T) {
 	}
 	if string(plaintext) != "secret" {
 		t.Fatalf("plaintext = %q", plaintext)
+	}
+}
+
+func TestEncryptWithSingleIdentityUsesPublicRecipientComment(t *testing.T) {
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	encryptionIdentityFile := filepath.Join(dir, "encrypt.identity")
+	encryptionData := []byte("# public key: " + identity.Recipient().String() + "\nnot an age identity\n")
+	if err := writeSecretFile(encryptionIdentityFile, encryptionData); err != nil {
+		t.Fatal(err)
+	}
+
+	ciphertext, err := encryptWithSingleIdentity([]byte("secret"), encryptionIdentityFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decryptionIdentityFile := filepath.Join(dir, "decrypt.identity")
+	decryptionData := []byte("# public key: " + identity.Recipient().String() + "\n" + identity.String() + "\n")
+	if err := writeSecretFile(decryptionIdentityFile, decryptionData); err != nil {
+		t.Fatal(err)
+	}
+	plaintext, err := decryptWithIdentityFile(ciphertext, decryptionIdentityFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(plaintext) != "secret" {
+		t.Fatalf("plaintext = %q", plaintext)
+	}
+}
+
+func TestEncryptWithSingleIdentityRequiresPublicRecipientComment(t *testing.T) {
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityFile := filepath.Join(t.TempDir(), "test.identity")
+	if err := writeSecretFile(identityFile, []byte(identity.String()+"\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = encryptWithSingleIdentity([]byte("secret"), identityFile)
+	if err == nil {
+		t.Fatal("encryptWithSingleIdentity accepted an identity file without a public recipient comment")
+	}
+	if !strings.Contains(err.Error(), "no public recipient comment") {
+		t.Fatalf("error = %q, want missing public recipient comment", err)
 	}
 }

@@ -8,12 +8,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"filippo.io/age"
 	"filippo.io/age/plugin"
+	"filippo.io/age/tag"
 	"golang.org/x/term"
 )
+
+var ageRecipientPattern = regexp.MustCompile(`age1[A-Za-z0-9+._-]+`)
 
 func readAgeIdentities(path string) ([]age.Identity, error) {
 	if err := ensurePrivateFile(path, "identity file"); err != nil {
@@ -28,12 +32,12 @@ func readAgeIdentities(path string) ([]age.Identity, error) {
 	var identities []age.Identity
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for lineNumber := 1; scanner.Scan(); lineNumber++ {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 || bytes.HasPrefix(line, []byte("#")) {
 			continue
 		}
 
-		identity, err := parseAgeIdentity(line)
+		identity, err := parseAgeIdentity(string(line))
 		if err != nil {
 			return nil, fmt.Errorf("%s:%d: %w", path, lineNumber, err)
 		}
@@ -65,16 +69,87 @@ func parseAgeIdentity(line string) (age.Identity, error) {
 	}
 }
 
-func encryptWithSingleIdentity(plaintext []byte, identityFile string) ([]byte, error) {
-	identities, err := readAgeIdentities(identityFile)
+func recipientFromIdentityFilePublicComment(identityFile string) (age.Recipient, error) {
+	recipients, err := readIdentityFilePublicRecipients(identityFile)
 	if err != nil {
 		return nil, err
 	}
-	if len(identities) != 1 {
-		return nil, fmt.Errorf("identity file %s contains %d identities; provider encryption expects exactly one", identityFile, len(identities))
+	if len(recipients) == 0 {
+		return nil, fmt.Errorf("identity file %s has no public recipient comment", identityFile)
 	}
+	if len(recipients) != 1 {
+		return nil, fmt.Errorf("identity file %s contains %d public recipient comments; provider encryption expects exactly one", identityFile, len(recipients))
+	}
+	recipient, err := parseAgeRecipient(recipients[0])
+	if err != nil {
+		return nil, fmt.Errorf("parse public recipient in identity file %s: %w", identityFile, err)
+	}
+	return recipient, nil
+}
 
-	recipient, err := recipientForIdentity(identities[0])
+func readIdentityFilePublicRecipients(path string) ([]string, error) {
+	if err := ensurePrivateFile(path, "identity file"); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, fmt.Errorf("read identity file %s: %w", path, err)
+	}
+	defer zeroBytes(data)
+	return publicRecipientsInIdentityData(data), nil
+}
+
+func publicRecipientsInIdentityData(data []byte) []string {
+	seen := map[string]bool{}
+	recipients := []string{}
+	remaining := data
+	for len(remaining) > 0 {
+		line := remaining
+		if before, after, found := bytes.Cut(remaining, []byte("\n")); found {
+			line = before
+			remaining = after
+		} else {
+			remaining = nil
+		}
+
+		comment, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("#"))
+		if !ok {
+			continue
+		}
+		for _, match := range ageRecipientPattern.FindAll(comment, -1) {
+			recipient := strings.TrimRight(string(match), ".,;:)]}>\"'")
+			if recipient == "" || seen[recipient] {
+				continue
+			}
+			if _, err := parseAgeRecipient(recipient); err != nil {
+				continue
+			}
+			seen[recipient] = true
+			recipients = append(recipients, recipient)
+		}
+	}
+	return recipients
+}
+
+func parseAgeRecipient(line string) (age.Recipient, error) {
+	if recipient, err := age.ParseX25519Recipient(line); err == nil {
+		return recipient, nil
+	}
+	if recipient, err := age.ParseHybridRecipient(line); err == nil {
+		return recipient, nil
+	}
+	if recipient, err := tag.ParseRecipient(line); err == nil {
+		return recipient, nil
+	}
+	recipient, err := plugin.NewRecipient(line, newPluginUI())
+	if err != nil {
+		return nil, fmt.Errorf("unsupported age recipient type")
+	}
+	return recipient, nil
+}
+
+func encryptWithSingleIdentity(plaintext []byte, identityFile string) ([]byte, error) {
+	recipient, err := recipientFromIdentityFilePublicComment(identityFile)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +171,7 @@ func encryptWithSingleIdentity(plaintext []byte, identityFile string) ([]byte, e
 		}
 		return nil
 	}
-	if identityUsesPlugin(identities[0]) {
+	if recipientUsesPlugin(recipient) {
 		if err := withPluginChildEnvironment(encrypt); err != nil {
 			return nil, err
 		}
@@ -147,17 +222,9 @@ func identityUsesPlugin(identity age.Identity) bool {
 	return ok
 }
 
-func recipientForIdentity(identity age.Identity) (age.Recipient, error) {
-	switch id := identity.(type) {
-	case *age.X25519Identity:
-		return id.Recipient(), nil
-	case *age.HybridIdentity:
-		return id.Recipient(), nil
-	case *plugin.Identity:
-		return id.Recipient(), nil
-	default:
-		return nil, fmt.Errorf("identity type %T cannot be used as an encryption recipient", identity)
-	}
+func recipientUsesPlugin(recipient age.Recipient) bool {
+	_, ok := recipient.(*plugin.Recipient)
+	return ok
 }
 
 func withAgeInstallHint(err error) error {
