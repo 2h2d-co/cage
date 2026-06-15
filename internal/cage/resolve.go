@@ -237,7 +237,9 @@ func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 	case IdentityTypeSecureEnclave:
 		notifyActionNeeded(fmt.Sprintf("approve Secure Enclave access for identity %q", provider.Identity))
 	case IdentityTypeYubiKey:
-		notifyActionNeeded(fmt.Sprintf("touch the YubiKey for identity %q when it blinks", provider.Identity))
+		if shouldPreNotifyYubiKeyTouch(cfg.ResolveFile(identity.File)) {
+			notifyActionNeeded(fmt.Sprintf("touch the YubiKey for identity %q when it blinks", provider.Identity))
+		}
 	}
 	plaintext, err := decryptWithIdentityFile(ciphertext, cfg.ResolveFile(identity.File))
 	if err != nil {
@@ -249,4 +251,55 @@ func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 		return nil, fmt.Errorf("decrypted provider token is empty")
 	}
 	return token, nil
+}
+
+func shouldPreNotifyYubiKeyTouch(identityFile string) bool {
+	metadata, ok := readYubiKeyIdentityActionMetadata(identityFile)
+	if !ok {
+		return true
+	}
+	if metadata.pinAlwaysRequired {
+		return false
+	}
+	return metadata.touchRequired
+}
+
+type yubiKeyIdentityActionMetadata struct {
+	pinAlwaysRequired bool
+	touchRequired     bool
+}
+
+func readYubiKeyIdentityActionMetadata(identityFile string) (yubiKeyIdentityActionMetadata, bool) {
+	data, err := os.ReadFile(filepath.Clean(identityFile))
+	if err != nil {
+		return yubiKeyIdentityActionMetadata{}, false
+	}
+
+	var metadata yubiKeyIdentityActionMetadata
+	var sawPolicy bool
+	for _, line := range strings.Split(string(data), "\n") {
+		comment, ok := strings.CutPrefix(strings.TrimSpace(line), "#")
+		if !ok {
+			continue
+		}
+		key, value, ok := strings.Cut(comment, ":")
+		if !ok {
+			continue
+		}
+
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "pin policy":
+			sawPolicy = true
+			metadata.pinAlwaysRequired = policyValueIs(value, "always")
+		case "touch policy":
+			sawPolicy = true
+			metadata.touchRequired = !policyValueIs(value, "never")
+		}
+	}
+	return metadata, sawPolicy
+}
+
+func policyValueIs(value, policy string) bool {
+	fields := strings.Fields(value)
+	return len(fields) > 0 && strings.EqualFold(fields[0], policy)
 }

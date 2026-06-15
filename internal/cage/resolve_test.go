@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -223,6 +225,29 @@ func TestValidateEnvironmentVariableName(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("validateEnvironmentVariableName(%q) = %q, want %q", name, err, want)
 		}
+	}
+}
+
+func TestShouldPreNotifyYubiKeyTouch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.identity")
+	if err := os.WriteFile(path, []byte(`#   PIN policy: Never (A PIN is NOT required to decrypt)
+# Touch policy: Always (A physical touch is required for every decryption)
+AGE-PLUGIN-YUBIKEY-TEST
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !shouldPreNotifyYubiKeyTouch(path) {
+		t.Fatal("shouldPreNotifyYubiKeyTouch() = false, want true for touch-only identity")
+	}
+
+	if err := os.WriteFile(path, []byte(`#   PIN policy: Always (A PIN is required for every decryption, if set)
+# Touch policy: Always (A physical touch is required for every decryption)
+AGE-PLUGIN-YUBIKEY-TEST
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if shouldPreNotifyYubiKeyTouch(path) {
+		t.Fatal("shouldPreNotifyYubiKeyTouch() = true, want false when PIN prompt will explain touch")
 	}
 }
 

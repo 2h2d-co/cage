@@ -7,6 +7,24 @@ import (
 	"filippo.io/age"
 )
 
+func TestYubiKeyPluginMessagesGuidePinThenTouch(t *testing.T) {
+	if got, want := pluginSecretInputMessage("yubikey"), "enter the YubiKey PIN, then touch the YubiKey when it blinks"; got != want {
+		t.Fatalf("pluginSecretInputMessage() = %q, want %q", got, want)
+	}
+	if got, want := pluginWaitMessage("yubikey"), "touch the YubiKey when it blinks"; got != want {
+		t.Fatalf("pluginWaitMessage() = %q, want %q", got, want)
+	}
+}
+
+func TestPluginMessagesKeepGenericFallbacks(t *testing.T) {
+	if got, want := pluginSecretInputMessage("se"), "age-plugin-se needs secure input"; got != want {
+		t.Fatalf("pluginSecretInputMessage() = %q, want %q", got, want)
+	}
+	if got, want := pluginWaitMessage("se"), "age-plugin-se is waiting for hardware or user confirmation"; got != want {
+		t.Fatalf("pluginWaitMessage() = %q, want %q", got, want)
+	}
+}
+
 func TestEncryptDecryptWithSingleNativeIdentity(t *testing.T) {
 	identity, err := age.GenerateX25519Identity()
 	if err != nil {

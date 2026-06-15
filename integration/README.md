@@ -143,7 +143,7 @@ mise run integration:run:yubikey-touch
 mise run integration:run:yubikey-touch-pin
 ```
 
-Hardware-backed profiles print an action-needed message on stderr and emit BEL plus OSC 9 terminal notification sequences before Secure Enclave approval, YubiKey PIN entry, or YubiKey touch is expected. Terminal behavior depends on your terminal notification/bell settings.
+Hardware-backed profiles print an action-needed message on stderr and ask macOS Notification Center (via AppleScript) to show an action-needed notification before Secure Enclave approval, YubiKey PIN entry, or YubiKey touch is expected. YubiKey PIN prompts mention that touch follows PIN entry when the key blinks. Native notifications depend on macOS notification permissions for scripts.
 
 If your config is not at the default path and you have not exported `CAGE_CONFIG`:
 

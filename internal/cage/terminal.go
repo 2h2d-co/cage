@@ -3,10 +3,9 @@ package cage
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"unicode"
-
-	"golang.org/x/term"
 )
 
 func notifyActionNeeded(message string) {
@@ -15,11 +14,46 @@ func notifyActionNeeded(message string) {
 		return
 	}
 
-	if term.IsTerminal(int(os.Stderr.Fd())) {
-		_, _ = fmt.Fprint(os.Stderr, "\a")
-		_, _ = fmt.Fprintf(os.Stderr, "\x1b]9;%s\x1b\\", terminalNotificationText(message))
-	}
+	postMacOSNotification(terminalNotificationText(message))
 	_, _ = fmt.Fprintf(os.Stderr, "cage: action needed: %s\n", message)
+}
+
+func postMacOSNotification(text string) {
+	if runtime.GOOS != "darwin" || text == "" {
+		return
+	}
+
+	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return
+	}
+	defer func() { _ = devNull.Close() }()
+
+	process, err := os.StartProcess("/usr/bin/osascript", []string{"osascript", "-e", macOSNotificationScript(text)}, &os.ProcAttr{
+		Files: []*os.File{devNull, devNull, devNull},
+		Env:   []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+	})
+	if err != nil {
+		return
+	}
+	_, _ = process.Wait()
+}
+
+func macOSNotificationScript(text string) string {
+	return "display notification " + appleScriptStringLiteral(text) + " with title " + appleScriptStringLiteral("cage") + " sound name " + appleScriptStringLiteral("Ping")
+}
+
+func appleScriptStringLiteral(value string) string {
+	var builder strings.Builder
+	builder.WriteByte('"')
+	for _, char := range value {
+		if char == '\\' || char == '"' {
+			builder.WriteByte('\\')
+		}
+		builder.WriteRune(char)
+	}
+	builder.WriteByte('"')
+	return builder.String()
 }
 
 func terminalNotificationText(message string) string {

@@ -159,9 +159,23 @@ func newPluginUI() *plugin.ClientUI {
 			return confirm("age-plugin-"+name+": "+label, false)
 		},
 		WaitTimer: func(name string) {
-			notifyActionNeeded(fmt.Sprintf("age-plugin-%s is waiting for hardware or user confirmation", name))
+			notifyActionNeeded(pluginWaitMessage(name))
 		},
 	}
+}
+
+func pluginWaitMessage(name string) string {
+	if name == "yubikey" {
+		return "touch the YubiKey when it blinks"
+	}
+	return fmt.Sprintf("age-plugin-%s is waiting for hardware or user confirmation", name)
+}
+
+func pluginSecretInputMessage(name string) string {
+	if name == "yubikey" {
+		return "enter the YubiKey PIN, then touch the YubiKey when it blinks"
+	}
+	return fmt.Sprintf("age-plugin-%s needs secure input", name)
 }
 
 func requestPluginValue(name, prompt string, secret bool) (value string, err error) {
@@ -184,7 +198,7 @@ func requestPluginValue(name, prompt string, secret bool) (value string, err err
 		if prompt == "" {
 			prompt = "secure input requested"
 		}
-		notifyActionNeeded(fmt.Sprintf("age-plugin-%s needs secure input", name))
+		notifyActionNeeded(pluginSecretInputMessage(name))
 		if _, err := fmt.Fprintf(os.Stderr, "age-plugin-%s: %s\n", name, prompt); err != nil {
 			return "", err
 		}
