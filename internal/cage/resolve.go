@@ -6,10 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	onepassword "github.com/1password/onepassword-sdk-go"
 	"github.com/spf13/cobra"
 )
+
+type providerTokenDecryptor func(*Config, string) (string, error)
+
+type onePasswordEnvironmentsFactory func(context.Context, string, string) (onepassword.EnvironmentsAPI, error)
 
 // Selection contains profile and environment names selected for resolution.
 type Selection struct {
@@ -83,42 +88,112 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 		return nil, err
 	}
 
-	resolved := map[string]string{}
+	decryptToken := a.decryptProviderToken
+	if decryptToken == nil {
+		decryptToken = decryptProviderToken
+	}
+	newEnvironments := a.newOnePasswordEnvironments
+	if newEnvironments == nil {
+		newEnvironments = newOnePasswordEnvironments
+	}
+
+	clients := map[string]onepassword.EnvironmentsAPI{}
 	for _, environmentName := range ordered {
 		environment := cfg.Environments[environmentName]
 		if environment.Type != EnvironmentType1Password {
 			return nil, fmt.Errorf("environment %q has unsupported type %q", environmentName, environment.Type)
 		}
-		a.debugf("loading environment %s", environmentName)
+		if _, ok := clients[environment.Provider]; ok {
+			continue
+		}
 
-		token, err := decryptProviderToken(cfg, environment.Provider)
+		token, err := decryptToken(cfg, environment.Provider)
 		if err != nil {
 			return nil, fmt.Errorf("provider %q for environment %q: %w", environment.Provider, environmentName, err)
 		}
-
-		client, err := onepassword.NewClient(ctx,
-			onepassword.WithServiceAccountToken(token),
-			onepassword.WithIntegrationInfo("cage", a.version),
-		)
+		client, err := newEnvironments(ctx, token, a.version)
 		if err != nil {
-			return nil, fmt.Errorf("initialize 1Password SDK client for environment %q: %w", environmentName, err)
+			return nil, fmt.Errorf("initialize 1Password SDK client for provider %q: %w", environment.Provider, err)
 		}
+		clients[environment.Provider] = client
+	}
 
-		response, err := client.Environments().GetVariables(ctx, environment.UUID)
-		if err != nil {
-			return nil, fmt.Errorf("fetch 1Password environment %q: %w", environmentName, err)
-		}
+	results := make([]environmentLoadResult, len(ordered))
+	var wg sync.WaitGroup
+	for i, environmentName := range ordered {
+		environmentName := environmentName
+		environment := cfg.Environments[environmentName]
+		client := clients[environment.Provider]
+		results[i].name = environmentName
+		a.debugf("loading environment %s", environmentName)
 
-		masked := 0
-		for _, variable := range response.Variables {
-			if variable.Masked {
-				masked++
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			response, err := client.GetVariables(ctx, environment.UUID)
+			if err != nil {
+				results[index].err = fmt.Errorf("fetch 1Password environment %q: %w", environmentName, err)
+				return
 			}
+
+			masked := 0
+			for _, variable := range response.Variables {
+				if err := validateEnvironmentVariableName(variable.Name); err != nil {
+					results[index].err = fmt.Errorf("environment %q returned invalid variable name: %w", environmentName, err)
+					return
+				}
+				if variable.Masked {
+					masked++
+				}
+			}
+			results[index].variables = response.Variables
+			results[index].masked = masked
+		}(i)
+	}
+	wg.Wait()
+
+	resolved := map[string]string{}
+	for _, result := range results {
+		if result.err != nil {
+			return nil, result.err
+		}
+		for _, variable := range result.variables {
 			resolved[variable.Name] = variable.Value
 		}
-		a.debugf("loaded environment %s: %d variables (%d masked)", environmentName, len(response.Variables), masked)
+		a.debugf("loaded environment %s: %d variables (%d masked)", result.name, len(result.variables), result.masked)
 	}
 	return resolved, nil
+}
+
+func newOnePasswordEnvironments(ctx context.Context, token, version string) (onepassword.EnvironmentsAPI, error) {
+	client, err := onepassword.NewClient(ctx,
+		onepassword.WithServiceAccountToken(token),
+		onepassword.WithIntegrationInfo("cage", version),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return client.Environments(), nil
+}
+
+type environmentLoadResult struct {
+	name      string
+	variables []onepassword.EnvironmentVariable
+	masked    int
+	err       error
+}
+
+func validateEnvironmentVariableName(name string) error {
+	if name == "" {
+		return fmt.Errorf("empty environment variable name")
+	}
+	if strings.Contains(name, "=") {
+		return fmt.Errorf("environment variable name %q contains =", name)
+	}
+	if strings.ContainsRune(name, '\x00') {
+		return fmt.Errorf("environment variable name %q contains NUL", name)
+	}
+	return nil
 }
 
 func decryptProviderToken(cfg *Config, providerName string) (string, error) {

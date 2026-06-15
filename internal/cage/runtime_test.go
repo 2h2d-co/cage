@@ -10,11 +10,14 @@ func TestChildEnvironmentRemovesOnePasswordServiceAccountToken(t *testing.T) {
 	t.Setenv("CAGE_TEST_KEEP", "parent")
 	t.Setenv(tokenKey, "parent-value")
 
-	env := childEnvironment(map[string]string{
+	env, err := childEnvironment(map[string]string{
 		"CAGE_TEST_KEEP": "override",
 		"CAGE_TEST_NEW":  "value",
 		tokenKey:         "override-value",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	joined := "\n" + strings.Join(env, "\n") + "\n"
 	if strings.Contains(joined, "OP_SERVICE_ACCOUNT_TOKEN=") {
 		t.Fatalf("child env leaked OP_SERVICE_ACCOUNT_TOKEN: %s", joined)
@@ -24,6 +27,16 @@ func TestChildEnvironmentRemovesOnePasswordServiceAccountToken(t *testing.T) {
 	}
 	if !strings.Contains(joined, "\nCAGE_TEST_NEW=value\n") {
 		t.Fatalf("child env missing override: %s", joined)
+	}
+}
+
+func TestChildEnvironmentRejectsInvalidOverrideName(t *testing.T) {
+	_, err := childEnvironment(map[string]string{"BAD=NAME": "value"})
+	if err == nil {
+		t.Fatal("childEnvironment accepted invalid override name")
+	}
+	if !strings.Contains(err.Error(), "contains =") {
+		t.Fatalf("error = %q, want contains =", err)
 	}
 }
 

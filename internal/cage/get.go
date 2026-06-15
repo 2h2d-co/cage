@@ -55,6 +55,12 @@ func (a *App) printGetResult(name string, variables map[string]string, jsonOutpu
 		selected[name] = value
 	}
 
+	for key := range selected {
+		if err := validateEnvironmentVariableName(key); err != nil {
+			return fmt.Errorf("resolved environment: %w", err)
+		}
+	}
+
 	if jsonOutput {
 		encoder := json.NewEncoder(a.out)
 		encoder.SetEscapeHTML(false)

@@ -13,17 +13,25 @@ import (
 
 // App holds process-wide CLI settings shared by cage commands.
 type App struct {
-	configPath string
-	verbose    bool
-	debug      bool
-	version    string
-	out        io.Writer
-	errOut     io.Writer
+	configPath                 string
+	verbose                    bool
+	debug                      bool
+	version                    string
+	out                        io.Writer
+	errOut                     io.Writer
+	decryptProviderToken       providerTokenDecryptor
+	newOnePasswordEnvironments onePasswordEnvironmentsFactory
 }
 
 // NewRootCommand builds the root cage command tree.
 func NewRootCommand(version string) *cobra.Command {
-	app := &App{version: version, out: os.Stdout, errOut: os.Stderr}
+	app := &App{
+		version:                    version,
+		out:                        os.Stdout,
+		errOut:                     os.Stderr,
+		decryptProviderToken:       decryptProviderToken,
+		newOnePasswordEnvironments: newOnePasswordEnvironments,
+	}
 
 	root := &cobra.Command{
 		Use:           "cage",
