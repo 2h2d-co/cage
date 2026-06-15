@@ -186,6 +186,85 @@ project = { type = "1password", identity = "local", file = "../project.1p.age" }
 	}
 }
 
+func TestLoadConfigRejectsSymlinks(t *testing.T) {
+	t.Run("config file", func(t *testing.T) {
+		dir := privateTempDir(t)
+		target := filepath.Join(dir, "target.toml")
+		if err := os.WriteFile(target, []byte(""), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(dir, "config.toml")
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("create symlink: %v", err)
+		}
+
+		_, err := LoadConfig(link)
+		if err == nil {
+			t.Fatal("LoadConfig accepted a symlinked config file")
+		}
+		if !strings.Contains(err.Error(), "symlink") {
+			t.Fatalf("error = %q, want symlink error", err)
+		}
+	})
+
+	t.Run("config relative file", func(t *testing.T) {
+		dir := privateTempDir(t)
+		outside := filepath.Join(t.TempDir(), "outside.identity")
+		if err := os.WriteFile(outside, []byte("identity"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(dir, "local.identity")); err != nil {
+			t.Skipf("create symlink: %v", err)
+		}
+		path := filepath.Join(dir, "config.toml")
+		data := `
+[identities]
+local = { type = "basic", file = "local.identity" }
+`
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := LoadConfig(path)
+		if err == nil {
+			t.Fatal("LoadConfig accepted a symlinked config-relative file")
+		}
+		if !strings.Contains(err.Error(), "symlink") {
+			t.Fatalf("error = %q, want symlink error", err)
+		}
+	})
+
+	t.Run("config relative parent directory", func(t *testing.T) {
+		dir := privateTempDir(t)
+		outsideDir := filepath.Join(t.TempDir(), "outside")
+		if err := os.Mkdir(outsideDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(outsideDir, "local.identity"), []byte("identity"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outsideDir, filepath.Join(dir, "ids")); err != nil {
+			t.Skipf("create symlink: %v", err)
+		}
+		path := filepath.Join(dir, "config.toml")
+		data := `
+[identities]
+local = { type = "basic", file = "ids/local.identity" }
+`
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := LoadConfig(path)
+		if err == nil {
+			t.Fatal("LoadConfig accepted a symlinked config-relative parent directory")
+		}
+		if !strings.Contains(err.Error(), "symlink") {
+			t.Fatalf("error = %q, want symlink error", err)
+		}
+	})
+}
+
 func TestLoadConfigAllowsSubdirectoryFilePaths(t *testing.T) {
 	dir := privateTempDir(t)
 	path := filepath.Join(dir, "config.toml")

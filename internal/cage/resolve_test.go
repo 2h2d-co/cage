@@ -206,7 +206,7 @@ func TestPrintGetResultRejectsInvalidVariableName(t *testing.T) {
 }
 
 func TestValidateEnvironmentVariableName(t *testing.T) {
-	for _, name := range []string{"FOO", "1", "with-dash", "with.dot"} {
+	for _, name := range []string{"FOO", "_FOO", "foo_bar", "FOO1"} {
 		if err := validateEnvironmentVariableName(name); err != nil {
 			t.Fatalf("validateEnvironmentVariableName(%q) returned %v", name, err)
 		}
@@ -214,6 +214,11 @@ func TestValidateEnvironmentVariableName(t *testing.T) {
 
 	cases := map[string]string{
 		"":            "empty",
+		"1":           "must start",
+		"with-dash":   "letters, numbers, and underscores",
+		"with.dot":    "letters, numbers, and underscores",
+		"BAD NAME":    "letters, numbers, and underscores",
+		"BAD\nNAME":   "letters, numbers, and underscores",
 		"BAD=NAME":    "contains =",
 		"BAD\x00NAME": "contains NUL",
 	}

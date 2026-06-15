@@ -61,7 +61,7 @@ func fileExists(path string) (bool, error) {
 }
 
 func ensurePrivateFile(path string, label string) error {
-	info, err := os.Stat(filepath.Clean(path))
+	info, err := os.Lstat(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("stat %s %s: %w", label, path, err)
 	}
@@ -69,7 +69,7 @@ func ensurePrivateFile(path string, label string) error {
 }
 
 func ensurePrivateDir(path string, label string) error {
-	info, err := os.Stat(filepath.Clean(path))
+	info, err := os.Lstat(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("stat %s %s: %w", label, path, err)
 	}
@@ -77,7 +77,7 @@ func ensurePrivateDir(path string, label string) error {
 }
 
 func ensurePrivateDirIfExists(path string, label string) error {
-	info, err := os.Stat(filepath.Clean(path))
+	info, err := os.Lstat(filepath.Clean(path))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -88,6 +88,10 @@ func ensurePrivateDirIfExists(path string, label string) error {
 }
 
 func ensurePrivateInfo(path string, label string, info os.FileInfo, wantDir bool, privateMode os.FileMode) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s %s must not be a symlink", label, path)
+	}
+
 	if wantDir {
 		if !info.IsDir() {
 			return fmt.Errorf("%s %s is not a directory", label, path)

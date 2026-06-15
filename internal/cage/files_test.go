@@ -3,8 +3,29 @@ package cage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestEnsurePrivateFileRejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("create symlink: %v", err)
+	}
+
+	err := ensurePrivateFile(link, "test file")
+	if err == nil {
+		t.Fatal("ensurePrivateFile accepted a symlink")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("error = %q, want symlink error", err)
+	}
+}
 
 func TestAtomicWriteFileSetsModeOnCreateAndOverwrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secret")

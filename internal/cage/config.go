@@ -107,7 +107,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	info, err := os.Stat(filepath.Clean(expanded))
+	info, err := os.Lstat(filepath.Clean(expanded))
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil
 	}
@@ -195,6 +195,30 @@ func (c *Config) validateConfigFilePath(field string, file string) error {
 	}
 	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
 		return fmt.Errorf("%s must stay within config directory", field)
+	}
+	if err := c.rejectSymlinkedConfigFilePath(field, cleaned); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) rejectSymlinkedConfigFilePath(field string, cleaned string) error {
+	current := c.Dir
+	for _, part := range strings.Split(cleaned, string(filepath.Separator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(filepath.Clean(current))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("stat %s %s: %w", field, current, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s must not contain symlink %s", field, current)
+		}
 	}
 	return nil
 }

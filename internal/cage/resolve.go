@@ -212,7 +212,23 @@ func validateEnvironmentVariableName(name string) error {
 	if strings.ContainsRune(name, '\x00') {
 		return fmt.Errorf("environment variable name %q contains NUL", name)
 	}
+	if !isEnvironmentVariableNameStart(name[0]) {
+		return fmt.Errorf("environment variable name %q must start with a letter or underscore", name)
+	}
+	for i := 1; i < len(name); i++ {
+		if !isEnvironmentVariableNamePart(name[i]) {
+			return fmt.Errorf("environment variable name %q must contain only letters, numbers, and underscores", name)
+		}
+	}
 	return nil
+}
+
+func isEnvironmentVariableNameStart(char byte) bool {
+	return char == '_' || (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z')
+}
+
+func isEnvironmentVariableNamePart(char byte) bool {
+	return isEnvironmentVariableNameStart(char) || (char >= '0' && char <= '9')
 }
 
 // decryptProviderToken returns an owned plaintext token buffer. The caller must zero it.

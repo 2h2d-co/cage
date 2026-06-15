@@ -71,6 +71,16 @@ func TestAgePluginEnvironmentAllowsOnlyOperationalKeys(t *testing.T) {
 	}
 }
 
+func TestBuildChildEnvironmentRejectsNULValue(t *testing.T) {
+	_, err := buildChildEnvironment(childEnvironmentUserExec, []string{"PATH=/usr/bin:/bin"}, map[string]string{"CAGE_TEST": "bad\x00value"})
+	if err == nil {
+		t.Fatal("buildChildEnvironment accepted a NUL-containing override value")
+	}
+	if !strings.Contains(err.Error(), "contains NUL") {
+		t.Fatalf("error = %q, want NUL error", err)
+	}
+}
+
 func TestWithPluginChildEnvironmentRestoresVariables(t *testing.T) {
 	tokenKey := "OP_SERVICE_ACCOUNT_" + "TOKEN"
 	t.Setenv("PATH", "/usr/bin:/bin")

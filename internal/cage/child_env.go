@@ -43,6 +43,9 @@ func buildChildEnvironment(scope childEnvironmentScope, parent []string, overrid
 		if !scope.allowsInheritedEnvironment(key) {
 			continue
 		}
+		if strings.ContainsRune(value, '\x00') {
+			return nil, fmt.Errorf("parent environment variable %q contains NUL in value", key)
+		}
 		values[key] = value
 	}
 
@@ -52,6 +55,9 @@ func buildChildEnvironment(scope childEnvironmentScope, parent []string, overrid
 		}
 		if !scope.allowsOverrideEnvironment(key) {
 			continue
+		}
+		if strings.ContainsRune(value, '\x00') {
+			return nil, fmt.Errorf("child environment override %q contains NUL in value", key)
 		}
 		values[key] = value
 	}
