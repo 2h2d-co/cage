@@ -3,7 +3,8 @@ package cage
 import (
 	"context"
 	"fmt"
-	"reflect"
+	"io"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -37,7 +38,7 @@ func TestResolveVariablesReusesProviderClient(t *testing.T) {
 			}
 			return "token-project", nil
 		},
-		newOnePasswordEnvironments: func(_ context.Context, token, version string) (onepassword.EnvironmentsAPI, error) {
+		newOnePasswordEnvironments: func(_ context.Context, token, _ string) (onepassword.EnvironmentsAPI, error) {
 			factoryCalls++
 			if token != "token-project" {
 				return nil, fmt.Errorf("unexpected token %q", token)
@@ -63,7 +64,7 @@ func TestResolveVariablesReusesProviderClient(t *testing.T) {
 	calls := api.callsSnapshot()
 	sort.Strings(calls)
 	wantCalls := []string{"dev-uuid", "stage-uuid"}
-	if !reflect.DeepEqual(calls, wantCalls) {
+	if !slices.Equal(calls, wantCalls) {
 		t.Fatalf("GetVariables calls = %#v, want %#v", calls, wantCalls)
 	}
 }
@@ -141,6 +142,19 @@ func TestResolveVariablesRejectsInvalidVariableName(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid variable name") || !strings.Contains(err.Error(), "contains =") {
 		t.Fatalf("error = %q, want invalid variable name containing =", err)
+	}
+}
+
+func TestPrintGetResultRejectsInvalidVariableName(t *testing.T) {
+	app := &App{out: io.Discard}
+	for _, jsonOutput := range []bool{false, true} {
+		err := app.printGetResult("*", map[string]string{"BAD=NAME": "value"}, jsonOutput)
+		if err == nil {
+			t.Fatalf("printGetResult accepted an invalid variable name with jsonOutput=%v", jsonOutput)
+		}
+		if !strings.Contains(err.Error(), "contains =") {
+			t.Fatalf("error = %q, want contains =", err)
+		}
 	}
 }
 

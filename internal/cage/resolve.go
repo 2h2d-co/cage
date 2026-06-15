@@ -121,25 +121,24 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 	results := make([]environmentLoadResult, len(ordered))
 	var wg sync.WaitGroup
 	for i, environmentName := range ordered {
-		environmentName := environmentName
 		environment := cfg.Environments[environmentName]
 		client := clients[environment.Provider]
 		results[i].name = environmentName
 		a.debugf("loading environment %s", environmentName)
 
 		wg.Add(1)
-		go func(index int) {
+		go func(index int, name, uuid string, client onepassword.EnvironmentsAPI) {
 			defer wg.Done()
-			response, err := client.GetVariables(ctx, environment.UUID)
+			response, err := client.GetVariables(ctx, uuid)
 			if err != nil {
-				results[index].err = fmt.Errorf("fetch 1Password environment %q: %w", environmentName, err)
+				results[index].err = fmt.Errorf("fetch 1Password environment %q: %w", name, err)
 				return
 			}
 
 			masked := 0
 			for _, variable := range response.Variables {
 				if err := validateEnvironmentVariableName(variable.Name); err != nil {
-					results[index].err = fmt.Errorf("environment %q returned invalid variable name: %w", environmentName, err)
+					results[index].err = fmt.Errorf("environment %q returned invalid variable name: %w", name, err)
 					return
 				}
 				if variable.Masked {
@@ -148,7 +147,7 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 			}
 			results[index].variables = response.Variables
 			results[index].masked = masked
-		}(i)
+		}(i, environmentName, environment.UUID, client)
 	}
 	wg.Wait()
 
