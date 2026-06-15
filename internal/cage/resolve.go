@@ -241,7 +241,12 @@ func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 	case IdentityTypeSecureEnclave:
 		notifyActionNeeded(fmt.Sprintf("approve Secure Enclave access for identity %q", provider.Identity))
 	case IdentityTypeYubiKey:
-		if shouldPreNotifyYubiKeyTouch(cfg.ResolveFile(identity.File)) {
+		identityPath := cfg.ResolveFile(identity.File)
+		preNotify, err := shouldPreNotifyYubiKeyTouch(identityPath)
+		if err != nil {
+			return nil, err
+		}
+		if preNotify {
 			notifyActionNeeded(fmt.Sprintf("touch the YubiKey for identity %q when it blinks", provider.Identity))
 		}
 	}
@@ -257,15 +262,18 @@ func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 	return token, nil
 }
 
-func shouldPreNotifyYubiKeyTouch(identityFile string) bool {
-	metadata, ok := readYubiKeyIdentityActionMetadata(identityFile)
+func shouldPreNotifyYubiKeyTouch(identityFile string) (bool, error) {
+	metadata, ok, err := readYubiKeyIdentityActionMetadata(identityFile)
+	if err != nil {
+		return false, err
+	}
 	if !ok {
-		return true
+		return true, nil
 	}
 	if metadata.pinAlwaysRequired {
-		return false
+		return false, nil
 	}
-	return metadata.touchRequired
+	return metadata.touchRequired, nil
 }
 
 type yubiKeyIdentityActionMetadata struct {
@@ -273,25 +281,38 @@ type yubiKeyIdentityActionMetadata struct {
 	touchRequired     bool
 }
 
-func readYubiKeyIdentityActionMetadata(identityFile string) (yubiKeyIdentityActionMetadata, bool) {
+func readYubiKeyIdentityActionMetadata(identityFile string) (yubiKeyIdentityActionMetadata, bool, error) {
+	if err := ensurePrivateFile(identityFile, "identity file"); err != nil {
+		return yubiKeyIdentityActionMetadata{}, false, err
+	}
 	data, err := os.ReadFile(filepath.Clean(identityFile))
 	if err != nil {
-		return yubiKeyIdentityActionMetadata{}, false
+		return yubiKeyIdentityActionMetadata{}, false, fmt.Errorf("read identity file %s: %w", identityFile, err)
 	}
+	defer zeroBytes(data)
 
 	var metadata yubiKeyIdentityActionMetadata
 	var sawPolicy bool
-	for _, line := range strings.Split(string(data), "\n") {
-		comment, ok := strings.CutPrefix(strings.TrimSpace(line), "#")
+	remaining := data
+	for len(remaining) > 0 {
+		line := remaining
+		if before, after, found := bytes.Cut(remaining, []byte("\n")); found {
+			line = before
+			remaining = after
+		} else {
+			remaining = nil
+		}
+
+		comment, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("#"))
 		if !ok {
 			continue
 		}
-		key, value, ok := strings.Cut(comment, ":")
+		key, value, ok := bytes.Cut(comment, []byte(":"))
 		if !ok {
 			continue
 		}
 
-		switch strings.ToLower(strings.TrimSpace(key)) {
+		switch strings.ToLower(string(bytes.TrimSpace(key))) {
 		case "pin policy":
 			sawPolicy = true
 			metadata.pinAlwaysRequired = policyValueIs(value, "always")
@@ -300,10 +321,10 @@ func readYubiKeyIdentityActionMetadata(identityFile string) (yubiKeyIdentityActi
 			metadata.touchRequired = !policyValueIs(value, "never")
 		}
 	}
-	return metadata, sawPolicy
+	return metadata, sawPolicy, nil
 }
 
-func policyValueIs(value, policy string) bool {
-	fields := strings.Fields(value)
-	return len(fields) > 0 && strings.EqualFold(fields[0], policy)
+func policyValueIs(value []byte, policy string) bool {
+	fields := bytes.Fields(value)
+	return len(fields) > 0 && strings.EqualFold(string(fields[0]), policy)
 }

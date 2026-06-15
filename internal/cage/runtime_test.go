@@ -7,20 +7,25 @@ import (
 
 func TestChildEnvironmentRemovesOnePasswordServiceAccountToken(t *testing.T) {
 	tokenKey := "OP_SERVICE_ACCOUNT_" + "TOKEN"
+	sessionKey := "OP_SESSION_example"
 	t.Setenv("CAGE_TEST_KEEP", "parent")
 	t.Setenv(tokenKey, "parent-value")
+	t.Setenv(sessionKey, "session-value")
 
 	env, err := childEnvironment(map[string]string{
 		"CAGE_TEST_KEEP": "override",
 		"CAGE_TEST_NEW":  "value",
 		tokenKey:         "override-value",
+		sessionKey:       "override-session",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := "\n" + strings.Join(env, "\n") + "\n"
-	if strings.Contains(joined, "OP_SERVICE_ACCOUNT_TOKEN=") {
-		t.Fatalf("child env leaked OP_SERVICE_ACCOUNT_TOKEN: %s", joined)
+	for _, unexpected := range []string{"OP_SERVICE_ACCOUNT_TOKEN=", "OP_SESSION_example="} {
+		if strings.Contains(joined, unexpected) {
+			t.Fatalf("child env leaked %s: %s", unexpected, joined)
+		}
 	}
 	if !strings.Contains(joined, "\nCAGE_TEST_KEEP=override\n") {
 		t.Fatalf("child env did not override parent value: %s", joined)

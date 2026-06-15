@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	osexec "os/exec"
-	"sort"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
@@ -58,38 +55,4 @@ func (a *App) newExecCommand() *cobra.Command {
 	addSelectionFlags(cmd, &profiles, &environments)
 	cmd.Flags().SetInterspersed(false)
 	return cmd
-}
-
-func childEnvironment(overrides map[string]string) ([]string, error) {
-	values := map[string]string{}
-	for _, entry := range os.Environ() {
-		key, value, ok := strings.Cut(entry, "=")
-		if !ok || key == "OP_SERVICE_ACCOUNT_TOKEN" {
-			continue
-		}
-		if err := validateEnvironmentVariableName(key); err != nil {
-			return nil, fmt.Errorf("parent environment: %w", err)
-		}
-		values[key] = value
-	}
-	for key, value := range overrides {
-		if key == "OP_SERVICE_ACCOUNT_TOKEN" {
-			continue
-		}
-		if err := validateEnvironmentVariableName(key); err != nil {
-			return nil, fmt.Errorf("resolved environment: %w", err)
-		}
-		values[key] = value
-	}
-
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	env := make([]string, 0, len(keys))
-	for _, key := range keys {
-		env = append(env, key+"="+values[key])
-	}
-	return env, nil
 }

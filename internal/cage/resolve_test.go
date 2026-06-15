@@ -236,7 +236,11 @@ AGE-PLUGIN-YUBIKEY-TEST
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if !shouldPreNotifyYubiKeyTouch(path) {
+	preNotify, err := shouldPreNotifyYubiKeyTouch(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !preNotify {
 		t.Fatal("shouldPreNotifyYubiKeyTouch() = false, want true for touch-only identity")
 	}
 
@@ -246,8 +250,30 @@ AGE-PLUGIN-YUBIKEY-TEST
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if shouldPreNotifyYubiKeyTouch(path) {
+	preNotify, err = shouldPreNotifyYubiKeyTouch(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preNotify {
 		t.Fatal("shouldPreNotifyYubiKeyTouch() = true, want false when PIN prompt will explain touch")
+	}
+}
+
+func TestShouldPreNotifyYubiKeyTouchRejectsInsecurePermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.identity")
+	if err := os.WriteFile(path, []byte(`# Touch policy: Always
+AGE-PLUGIN-YUBIKEY-TEST
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	makeInsecurePermissions(t, path, 0o644)
+
+	_, err := shouldPreNotifyYubiKeyTouch(path)
+	if err == nil {
+		t.Fatal("shouldPreNotifyYubiKeyTouch accepted group-readable identity file")
+	}
+	if !strings.Contains(err.Error(), "accessible by group or others") {
+		t.Fatalf("error = %q, want permission error", err)
 	}
 }
 

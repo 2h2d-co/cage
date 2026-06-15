@@ -10,9 +10,15 @@ import (
 	"testing"
 )
 
-func TestPluginEnvironmentStripsSensitiveKeys(t *testing.T) {
-	env := pluginEnvironment([]string{
+func TestAgePluginEnvironmentAllowsOnlyOperationalKeys(t *testing.T) {
+	env, err := buildChildEnvironment(childEnvironmentAgePlugin, []string{
 		"PATH=/usr/bin:/bin",
+		"HOME=/Users/test",
+		"TMPDIR=/tmp/cage",
+		"TERM=xterm-256color",
+		"LANG=en_US.UTF-8",
+		"LC_CTYPE=en_US.UTF-8",
+		"__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0",
 		"KEEP=value",
 		"TOKENIZERS_PARALLELISM=true",
 		"OP_SERVICE_ACCOUNT_TOKEN=secret",
@@ -26,9 +32,14 @@ func TestPluginEnvironmentStripsSensitiveKeys(t *testing.T) {
 		"SSH_AUTH_SOCK=secret",
 		"SSLKEYLOGFILE=secret",
 		"AGEDEBUG=plugin",
-	})
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	joined := "\n" + strings.Join(env, "\n") + "\n"
 	for _, unexpected := range []string{
+		"KEEP=",
+		"TOKENIZERS_PARALLELISM=",
 		"OP_SERVICE_ACCOUNT_TOKEN=",
 		"OP_SESSION_example=",
 		"GITHUB_TOKEN=",
@@ -45,37 +56,53 @@ func TestPluginEnvironmentStripsSensitiveKeys(t *testing.T) {
 			t.Fatalf("plugin environment leaked %s in %s", unexpected, joined)
 		}
 	}
-	for _, expected := range []string{"PATH=/usr/bin:/bin", "KEEP=value", "TOKENIZERS_PARALLELISM=true"} {
+	for _, expected := range []string{
+		"PATH=/usr/bin:/bin",
+		"HOME=/Users/test",
+		"TMPDIR=/tmp/cage",
+		"TERM=xterm-256color",
+		"LANG=en_US.UTF-8",
+		"LC_CTYPE=en_US.UTF-8",
+		"__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0",
+	} {
 		if !strings.Contains(joined, "\n"+expected+"\n") {
 			t.Fatalf("plugin environment removed %s from %s", expected, joined)
 		}
 	}
 }
 
-func TestWithSanitizedPluginEnvironmentRestoresVariables(t *testing.T) {
+func TestWithPluginChildEnvironmentRestoresVariables(t *testing.T) {
 	tokenKey := "OP_SERVICE_ACCOUNT_" + "TOKEN"
+	t.Setenv("PATH", "/usr/bin:/bin")
 	t.Setenv(tokenKey, "secret")
 	t.Setenv("CAGE_PLUGIN_TEST_KEEP", "value")
 	sentinelErr := errors.New("sentinel")
 
-	err := withSanitizedPluginEnvironment(func() error {
+	err := withPluginChildEnvironment(func() error {
 		if _, ok := os.LookupEnv(tokenKey); ok {
-			t.Fatalf("%s was present inside sanitized environment", tokenKey)
+			t.Fatalf("%s was present inside plugin environment", tokenKey)
 		}
-		if got := os.Getenv("CAGE_PLUGIN_TEST_KEEP"); got != "value" {
-			t.Fatalf("CAGE_PLUGIN_TEST_KEEP = %q, want value", got)
+		if _, ok := os.LookupEnv("CAGE_PLUGIN_TEST_KEEP"); ok {
+			t.Fatal("CAGE_PLUGIN_TEST_KEEP was present inside plugin environment")
+		}
+		if got := os.Getenv("PATH"); got != "/usr/bin:/bin" {
+			t.Fatalf("PATH = %q, want /usr/bin:/bin", got)
 		}
 		return sentinelErr
 	})
 	if !errors.Is(err, sentinelErr) {
-		t.Fatalf("withSanitizedPluginEnvironment error = %v, want sentinel", err)
+		t.Fatalf("withPluginChildEnvironment error = %v, want sentinel", err)
 	}
 	if got := os.Getenv(tokenKey); got != "secret" {
 		t.Fatalf("%s after restore = %q, want secret", tokenKey, got)
 	}
+	if got := os.Getenv("CAGE_PLUGIN_TEST_KEEP"); got != "value" {
+		t.Fatalf("CAGE_PLUGIN_TEST_KEEP after restore = %q, want value", got)
+	}
 }
 
 func TestRunPluginProcessUsesSanitizedEnvironment(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
 	envPath, err := exec.LookPath("env")
 	if err != nil {
 		t.Skip("env command not available")
@@ -89,10 +116,20 @@ func TestRunPluginProcessUsesSanitizedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := "\n" + stdout.String()
-	if strings.Contains(joined, "\n"+tokenKey+"=") {
-		t.Fatalf("plugin process environment leaked %s: %s", tokenKey, joined)
+	for _, unexpected := range []string{tokenKey + "=", "CAGE_PLUGIN_TEST_KEEP="} {
+		if strings.Contains(joined, "\n"+unexpected) {
+			t.Fatalf("plugin process environment leaked %s: %s", unexpected, joined)
+		}
 	}
-	if !strings.Contains(joined, "\nCAGE_PLUGIN_TEST_KEEP=value\n") {
-		t.Fatalf("plugin process environment missing kept variable: %s", joined)
+	if !strings.Contains(joined, "\nPATH=/usr/bin:/bin\n") {
+		t.Fatalf("plugin process environment missing PATH: %s", joined)
+	}
+}
+
+func TestMacOSNotificationEnvironmentIsFixed(t *testing.T) {
+	got := strings.Join(macOSNotificationEnvironment(), "\n")
+	want := "PATH=/usr/bin:/bin:/usr/sbin:/sbin"
+	if got != want {
+		t.Fatalf("macOSNotificationEnvironment() = %q, want %q", got, want)
 	}
 }

@@ -31,7 +31,7 @@ func postMacOSNotification(text string) {
 
 	process, err := os.StartProcess("/usr/bin/osascript", []string{"osascript", "-e", macOSNotificationScript(text)}, &os.ProcAttr{
 		Files: []*os.File{devNull, devNull, devNull},
-		Env:   []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+		Env:   macOSNotificationEnvironment(),
 	})
 	if err != nil {
 		return

@@ -97,7 +97,7 @@ func encryptWithSingleIdentity(plaintext []byte, identityFile string) ([]byte, e
 		return nil
 	}
 	if identityUsesPlugin(identities[0]) {
-		if err := withSanitizedPluginEnvironment(encrypt); err != nil {
+		if err := withPluginChildEnvironment(encrypt); err != nil {
 			return nil, err
 		}
 	} else if err := encrypt(); err != nil {
@@ -124,7 +124,7 @@ func decryptWithIdentityFile(ciphertext []byte, identityFile string) ([]byte, er
 		return nil
 	}
 	if identitiesUsePlugin(identities) {
-		if err := withSanitizedPluginEnvironment(decrypt); err != nil {
+		if err := withPluginChildEnvironment(decrypt); err != nil {
 			return nil, err
 		}
 	} else if err := decrypt(); err != nil {

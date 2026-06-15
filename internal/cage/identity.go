@@ -540,10 +540,15 @@ func runPluginProcessCaptureStdout(binary string, args []string, stdout io.Write
 	}
 	defer func() { _ = closeStderr() }()
 
+	env, err := pluginChildEnvironment()
+	if err != nil {
+		return errors.Join(err, stdoutW.Close())
+	}
+
 	argv := append([]string{binary}, args...)
 	process, err := os.StartProcess(path, argv, &os.ProcAttr{
 		Files: []*os.File{stdin, stdoutW, stderr},
-		Env:   pluginEnvironment(os.Environ()),
+		Env:   env,
 	})
 	closeErr := stdoutW.Close()
 	if err != nil {
@@ -619,10 +624,15 @@ func runPluginProcess(binary string, args []string, stdout io.Writer, stderr io.
 	}
 	defer func() { _ = stderrR.Close() }()
 
+	env, err := pluginChildEnvironment()
+	if err != nil {
+		return errors.Join(err, stdoutW.Close(), stderrW.Close())
+	}
+
 	argv := append([]string{binary}, args...)
 	process, err := os.StartProcess(path, argv, &os.ProcAttr{
 		Files: []*os.File{os.Stdin, stdoutW, stderrW},
-		Env:   pluginEnvironment(os.Environ()),
+		Env:   env,
 	})
 	closeErr := errors.Join(stdoutW.Close(), stderrW.Close())
 	if err != nil {
