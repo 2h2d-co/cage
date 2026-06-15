@@ -191,6 +191,8 @@ Print all values as dotenv-style lines:
 cage get --profiles default '*'
 ```
 
+Use this form for quick inspection or simple single-line values. Values are not shell-quoted; multiline values span multiple output lines and are not robust for parsing. Prefer JSON for multiline secrets or machine-readable output.
+
 Print JSON:
 
 ```sh

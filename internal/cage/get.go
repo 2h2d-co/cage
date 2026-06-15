@@ -17,7 +17,7 @@ func (a *App) newGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get [flags] ENV_VAR|*",
 		Short: "Print resolved environment variables",
-		Long:  "Resolve selected cage profiles and environments, then print one environment variable value or all variables with '*'. Flags must come before ENV_VAR.",
+		Long:  "Resolve selected cage profiles and environments, then print one environment variable value or all variables with '*'. The default '*' output is KEY=value lines for simple values; use --json for multiline or machine-readable output. Flags must come before ENV_VAR.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireMacOS(); err != nil {
