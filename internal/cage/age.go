@@ -65,7 +65,7 @@ func parseAgeIdentity(line string) (age.Identity, error) {
 		}
 		return identity, nil
 	default:
-		return nil, fmt.Errorf("unsupported age identity type")
+		return nil, errors.New("unsupported age identity type")
 	}
 }
 
@@ -143,7 +143,7 @@ func parseAgeRecipient(line string) (age.Recipient, error) {
 	}
 	recipient, err := plugin.NewRecipient(line, newPluginUI())
 	if err != nil {
-		return nil, fmt.Errorf("unsupported age recipient type")
+		return nil, errors.New("unsupported age recipient type")
 	}
 	return recipient, nil
 }

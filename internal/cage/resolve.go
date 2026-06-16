@@ -3,6 +3,7 @@ package cage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,7 +62,7 @@ func parseCommaList(value string) []string {
 
 func (s Selection) environmentOrder(cfg *Config) ([]string, error) {
 	if len(s.Profiles) == 0 && len(s.Environments) == 0 {
-		return nil, fmt.Errorf("select at least one profile or environment with --profiles/--environments or CAGE_PROFILES/CAGE_ENVIRONMENTS")
+		return nil, errors.New("select at least one profile or environment with --profiles/--environments or CAGE_PROFILES/CAGE_ENVIRONMENTS")
 	}
 
 	ordered := []string{}
@@ -127,7 +128,7 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 		environment := cfg.Environments[environmentName]
 		client := clients[environment.Provider]
 		results[i].name = environmentName
-		a.debugf("loading environment %s", environmentName)
+		a.verbosef("loading environment %s", environmentName)
 
 		wg.Add(1)
 		go func(index int, name, uuid string, client onepassword.EnvironmentsAPI) {
@@ -162,6 +163,7 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 		for _, variable := range result.variables {
 			resolved[variable.Name] = variable.Value
 		}
+		a.verbosef("loaded environment %s", result.name)
 		a.debugf("loaded environment %s: %d variables (%d masked)", result.name, len(result.variables), result.masked)
 	}
 	return resolved, nil
@@ -204,7 +206,7 @@ type environmentLoadResult struct {
 
 func validateEnvironmentVariableName(name string) error {
 	if name == "" {
-		return fmt.Errorf("empty environment variable name")
+		return errors.New("empty environment variable name")
 	}
 	if strings.Contains(name, "=") {
 		return fmt.Errorf("environment variable name %q contains =", name)
@@ -273,7 +275,7 @@ func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 	token := trimTrailingNewlines(plaintext)
 	if len(bytes.TrimSpace(token)) == 0 {
 		zeroBytes(plaintext)
-		return nil, fmt.Errorf("decrypted provider token is empty")
+		return nil, errors.New("decrypted provider token is empty")
 	}
 	return token, nil
 }

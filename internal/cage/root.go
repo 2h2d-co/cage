@@ -44,8 +44,8 @@ func NewRootCommand(version string) *cobra.Command {
 	root.SetOut(app.out)
 	root.SetErr(app.errOut)
 	root.PersistentFlags().StringVar(&app.configPath, "config", "", "config file path (overrides CAGE_CONFIG; default $XDG_CONFIG_HOME/cage/config.toml or ~/.config/cage/config.toml)")
-	root.PersistentFlags().BoolVarP(&app.verbose, "verbose", "v", false, "print verbose diagnostics to stderr")
-	root.PersistentFlags().BoolVar(&app.debug, "debug", false, "print debug diagnostics to stderr")
+	root.PersistentFlags().BoolVarP(&app.verbose, "verbose", "v", false, "print diagnostics to stderr")
+	root.PersistentFlags().BoolVar(&app.debug, "debug", false, "print diagnostics plus extra debug details to stderr")
 
 	root.AddCommand(app.newGetCommand())
 	root.AddCommand(app.newExecCommand())
@@ -64,12 +64,19 @@ func (a *App) loadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.debugf("config: %s", cfg.Path)
+	a.verbosef("config: %s", cfg.Path)
 	return cfg, nil
 }
 
-func (a *App) debugf(format string, args ...any) {
+func (a *App) verbosef(format string, args ...any) {
 	if !a.verbose && !a.debug {
+		return
+	}
+	_, _ = fmt.Fprintf(a.errOut, "cage: "+format+"\n", args...)
+}
+
+func (a *App) debugf(format string, args ...any) {
+	if !a.debug {
 		return
 	}
 	_, _ = fmt.Fprintf(a.errOut, "debug: "+format+"\n", args...)

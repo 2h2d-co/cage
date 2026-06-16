@@ -1,6 +1,7 @@
 package cage
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -52,5 +53,31 @@ func TestRedactSecretLookingValues(t *testing.T) {
 		if strings.Contains(redacted, leaked) {
 			t.Fatalf("redacted output leaked %q: %s", leaked, redacted)
 		}
+	}
+}
+
+func TestVerboseAndDebugDiagnosticsDiffer(t *testing.T) {
+	var out bytes.Buffer
+	app := &App{errOut: &out}
+	app.verbosef("visible")
+	app.debugf("hidden")
+	if out.Len() != 0 {
+		t.Fatalf("diagnostics without flags = %q, want none", out.String())
+	}
+
+	app.verbose = true
+	app.verbosef("visible")
+	app.debugf("hidden")
+	if got := out.String(); got != "cage: visible\n" {
+		t.Fatalf("verbose diagnostics = %q, want only high-level output", got)
+	}
+
+	out.Reset()
+	app.verbose = false
+	app.debug = true
+	app.verbosef("visible")
+	app.debugf("details")
+	if got := out.String(); got != "cage: visible\ndebug: details\n" {
+		t.Fatalf("debug diagnostics = %q, want high-level and debug output", got)
 	}
 }

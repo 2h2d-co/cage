@@ -1,6 +1,7 @@
 package cage
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 
@@ -46,7 +47,7 @@ func (a *App) new1PasswordProviderCreateCommand() *cobra.Command {
 				return err
 			}
 			if identityName == "" {
-				return fmt.Errorf("--identity is required")
+				return errors.New("--identity is required")
 			}
 
 			cfg, err := a.loadConfig()
@@ -70,7 +71,7 @@ func (a *App) new1PasswordProviderCreateCommand() *cobra.Command {
 			}
 			defer zeroBytes(token)
 			if len(token) == 0 {
-				return fmt.Errorf("1Password service account token is empty")
+				return errors.New("1Password service account token is empty")
 			}
 
 			ciphertext, err := encryptWithSingleIdentity(token, cfg.ResolveFile(identity.File))
@@ -109,7 +110,7 @@ func (a *App) confirmProviderOverwrite(cfg *Config, name string, path string, ye
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("create cancelled")
+		return errors.New("create cancelled")
 	}
 	return nil
 }

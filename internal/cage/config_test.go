@@ -3,7 +3,7 @@ package cage
 import (
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -25,7 +25,7 @@ func makeInsecurePermissions(t *testing.T, path string, mode os.FileMode) {
 	}
 }
 
-func TestLoadConfigSupportsInlineAndTableForms(t *testing.T) {
+func TestLoadConfigSupportsGeneratedSchema(t *testing.T) {
 	dir := privateTempDir(t)
 	path := filepath.Join(dir, "config.toml")
 	data := `
@@ -38,18 +38,12 @@ work2 = { type = "secure-enclave", file = "work2.identity" }
 project1 = { type = "1password", identity = "work1", file = "project1.1p.age" }
 project2 = { type = "1password", identity = "work2", file = "project2.1p.age" }
 
-[environments.dev]
-type = "1password-environment"
-provider = "project1"
-uuid = "dev-uuid"
-
 [environments]
+dev = { type = "1password-environment", provider = "project1", uuid = "dev-uuid" }
 stage = { type = "1password-environment", provider = "project2", uuid = "stage-uuid" }
 
-[profiles.default]
-environments = ["dev"]
-
 [profiles]
+default = ["dev"]
 proj2-prod = ["dev", "stage"]
 `
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
@@ -72,10 +66,10 @@ proj2-prod = ["dev", "stage"]
 	if cfg.Environments["dev"].UUID != "dev-uuid" || cfg.Environments["stage"].UUID != "stage-uuid" {
 		t.Fatalf("environments not parsed: %#v", cfg.Environments)
 	}
-	if !reflect.DeepEqual(cfg.Profiles["default"].Environments, []string{"dev"}) {
+	if !slices.Equal(cfg.Profiles["default"].Environments, []string{"dev"}) {
 		t.Fatalf("default profile = %#v", cfg.Profiles["default"].Environments)
 	}
-	if !reflect.DeepEqual(cfg.Profiles["proj2-prod"].Environments, []string{"dev", "stage"}) {
+	if !slices.Equal(cfg.Profiles["proj2-prod"].Environments, []string{"dev", "stage"}) {
 		t.Fatalf("proj2-prod profile = %#v", cfg.Profiles["proj2-prod"].Environments)
 	}
 }
@@ -306,11 +300,6 @@ project = { type = "1password", identity = "local", file = "project.1p.age", tok
 [environments]
 dev = { type = "1password-environment", provider = "project", uuid = "dev", token = "plain" }
 `,
-		"profile extra": `
-[profiles.default]
-environments = ["dev"]
-provider = "project"
-`,
 	}
 
 	for name, data := range cases {
@@ -323,10 +312,30 @@ provider = "project"
 			if err == nil {
 				t.Fatal("LoadConfig accepted an unknown nested key")
 			}
-			if !strings.Contains(err.Error(), "unsupported key") {
-				t.Fatalf("error = %q, want unsupported key", err)
+			if !strings.Contains(err.Error(), "unsupported config key") {
+				t.Fatalf("error = %q, want unsupported config key", err)
 			}
 		})
+	}
+}
+
+func TestLoadConfigRejectsProfileTableForm(t *testing.T) {
+	dir := privateTempDir(t)
+	path := filepath.Join(dir, "config.toml")
+	data := `
+[profiles.default]
+environments = ["dev"]
+`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig accepted profile table form")
+	}
+	if !strings.Contains(err.Error(), "cannot store a table in a slice") {
+		t.Fatalf("error = %q, want profile table form type error", err)
 	}
 }
 
@@ -345,8 +354,8 @@ local = { type = "basic", file = 123 }
 	if err == nil {
 		t.Fatal("LoadConfig accepted a non-string field")
 	}
-	if !strings.Contains(err.Error(), "identities.local.file must be a string") {
-		t.Fatalf("error = %q, want precise type error", err)
+	if !strings.Contains(err.Error(), "string") {
+		t.Fatalf("error = %q, want string type error", err)
 	}
 }
 
@@ -387,11 +396,11 @@ func TestLoadConfigRejectsInsecureConfigDirectoryPermissions(t *testing.T) {
 	}
 }
 
-func TestConfigWriteUsesExpectedCreatedSchema(t *testing.T) {
+func TestConfigWriteRoundTripsThroughTomlEncoder(t *testing.T) {
 	dir := privateTempDir(t)
 	cfg := emptyConfig(filepath.Join(dir, "config.toml"))
-	cfg.Identities["work1"] = IdentityConfig{Type: IdentityTypeBasic, File: "work1.identity"}
-	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "work1", File: "project1.1p.age"}
+	cfg.Identities["work1"] = IdentityConfig{Type: IdentityTypeBasic, File: "ids/work\x7f.identity"}
+	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "work1", File: "providers/project1.1p.age"}
 	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project1", UUID: "dev-uuid"}
 	cfg.Profiles["default"] = ProfileConfig{Environments: []string{"dev"}}
 
@@ -403,15 +412,28 @@ func TestConfigWriteUsesExpectedCreatedSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(written)
-	for _, want := range []string{
-		`work1 = { type = "basic", file = "work1.identity" }`,
-		`project1 = { type = "1password", identity = "work1", file = "project1.1p.age" }`,
-		`dev = { type = "1password-environment", provider = "project1", uuid = "dev-uuid" }`,
-		`default = ["dev"]`,
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("written config missing %q:\n%s", want, text)
-		}
+	if strings.ContainsRune(text, '\x7f') {
+		t.Fatalf("written config contains a raw DEL control character:\n%s", text)
+	}
+	if !strings.Contains(text, `\u007F`) {
+		t.Fatalf("written config did not TOML-escape DEL:\n%s", text)
+	}
+
+	loaded, err := LoadConfig(cfg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Identities["work1"] != cfg.Identities["work1"] {
+		t.Fatalf("identity round trip = %#v, want %#v", loaded.Identities["work1"], cfg.Identities["work1"])
+	}
+	if loaded.Providers["project1"] != cfg.Providers["project1"] {
+		t.Fatalf("provider round trip = %#v, want %#v", loaded.Providers["project1"], cfg.Providers["project1"])
+	}
+	if loaded.Environments["dev"] != cfg.Environments["dev"] {
+		t.Fatalf("environment round trip = %#v, want %#v", loaded.Environments["dev"], cfg.Environments["dev"])
+	}
+	if !slices.Equal(loaded.Profiles["default"].Environments, cfg.Profiles["default"].Environments) {
+		t.Fatalf("profile round trip = %#v, want %#v", loaded.Profiles["default"].Environments, cfg.Profiles["default"].Environments)
 	}
 }
 
@@ -427,7 +449,7 @@ func TestSelectionEnvironmentOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"dev", "stage", "prod"}
-	if !reflect.DeepEqual(got, want) {
+	if !slices.Equal(got, want) {
 		t.Fatalf("order = %#v, want %#v", got, want)
 	}
 }

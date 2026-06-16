@@ -1,6 +1,7 @@
 package cage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -8,7 +9,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -41,22 +41,22 @@ type Config struct {
 
 // IdentityConfig describes one configured age identity file.
 type IdentityConfig struct {
-	Type string
-	File string
+	Type string `toml:"type"`
+	File string `toml:"file"`
 }
 
 // ProviderConfig describes one encrypted provider credential.
 type ProviderConfig struct {
-	Type     string
-	Identity string
-	File     string
+	Type     string `toml:"type"`
+	Identity string `toml:"identity"`
+	File     string `toml:"file"`
 }
 
 // EnvironmentConfig describes one loadable secret environment.
 type EnvironmentConfig struct {
-	Type     string
-	Provider string
-	UUID     string
+	Type     string `toml:"type"`
+	Provider string `toml:"provider"`
+	UUID     string `toml:"uuid"`
 }
 
 // ProfileConfig describes a flat list of environments.
@@ -126,11 +126,7 @@ func LoadConfig(path string) (*Config, error) {
 		return cfg, nil
 	}
 
-	var raw map[string]any
-	if err := toml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parse config %s: %w", expanded, err)
-	}
-	if err := cfg.loadRaw(raw); err != nil {
+	if err := cfg.loadGeneratedConfig(data); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", expanded, err)
 	}
 	return cfg, nil
@@ -234,144 +230,109 @@ func ValidateCreatedName(kind, name string) error {
 	return nil
 }
 
-func (c *Config) loadRaw(raw map[string]any) error {
-	allowed := map[string]bool{
-		"identities":   true,
-		"providers":    true,
-		"environments": true,
-		"profiles":     true,
-	}
-	for key := range raw {
-		if !allowed[key] {
-			return fmt.Errorf("unsupported top-level table %q", key)
-		}
+type generatedConfigFile struct {
+	Identities   map[string]IdentityConfig    `toml:"identities"`
+	Providers    map[string]ProviderConfig    `toml:"providers"`
+	Environments map[string]EnvironmentConfig `toml:"environments"`
+	Profiles     map[string][]string          `toml:"profiles"`
+}
+
+func (c *Config) loadGeneratedConfig(data []byte) error {
+	var file generatedConfigFile
+	if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&file); err != nil {
+		return configDecodeError(err)
 	}
 
-	m, err := rawTable(raw, "identities")
-	if err != nil {
-		return err
-	}
-	for name, value := range m {
-		entryName := "identities." + name
-		entry, err := tableValue(entryName, value)
-		if err != nil {
-			return err
-		}
-		if err := ensureAllowedKeys(entryName, entry, "type", "file"); err != nil {
-			return err
-		}
-		identityType, err := stringField(entryName, entry, "type")
-		if err != nil {
-			return err
-		}
-		file, err := stringField(entryName, entry, "file")
-		if err != nil {
-			return err
-		}
-		identity := IdentityConfig{Type: identityType, File: file}
-		if identity.Type != IdentityTypeBasic && identity.Type != IdentityTypeYubiKey && identity.Type != IdentityTypeSecureEnclave {
-			return fmt.Errorf("%s has unsupported type %q", entryName, identity.Type)
-		}
-		if identity.File == "" {
-			return fmt.Errorf("%s file is required", entryName)
-		}
-		if err := c.validateConfigFilePath(entryName+".file", identity.File); err != nil {
+	for _, name := range sortedMapKeys(file.Identities) {
+		identity := file.Identities[name]
+		if err := c.validateIdentityConfig(name, identity); err != nil {
 			return err
 		}
 		c.Identities[name] = identity
 	}
-
-	m, err = rawTable(raw, "providers")
-	if err != nil {
-		return err
-	}
-	for name, value := range m {
-		entryName := "providers." + name
-		entry, err := tableValue(entryName, value)
-		if err != nil {
-			return err
-		}
-		if err := ensureAllowedKeys(entryName, entry, "type", "identity", "file"); err != nil {
-			return err
-		}
-		providerType, err := stringField(entryName, entry, "type")
-		if err != nil {
-			return err
-		}
-		identity, err := stringField(entryName, entry, "identity")
-		if err != nil {
-			return err
-		}
-		file, err := stringField(entryName, entry, "file")
-		if err != nil {
-			return err
-		}
-		provider := ProviderConfig{Type: providerType, Identity: identity, File: file}
-		if provider.Type != ProviderType1Password {
-			return fmt.Errorf("%s has unsupported type %q", entryName, provider.Type)
-		}
-		if provider.Identity == "" {
-			return fmt.Errorf("%s identity is required", entryName)
-		}
-		if provider.File == "" {
-			return fmt.Errorf("%s file is required", entryName)
-		}
-		if err := c.validateConfigFilePath(entryName+".file", provider.File); err != nil {
+	for _, name := range sortedMapKeys(file.Providers) {
+		provider := file.Providers[name]
+		if err := c.validateProviderConfig(name, provider); err != nil {
 			return err
 		}
 		c.Providers[name] = provider
 	}
-
-	m, err = rawTable(raw, "environments")
-	if err != nil {
-		return err
-	}
-	for name, value := range m {
-		entryName := "environments." + name
-		entry, err := tableValue(entryName, value)
-		if err != nil {
+	for _, name := range sortedMapKeys(file.Environments) {
+		environment := file.Environments[name]
+		if err := c.validateEnvironmentConfig(name, environment); err != nil {
 			return err
-		}
-		if err := ensureAllowedKeys(entryName, entry, "type", "provider", "uuid"); err != nil {
-			return err
-		}
-		environmentType, err := stringField(entryName, entry, "type")
-		if err != nil {
-			return err
-		}
-		provider, err := stringField(entryName, entry, "provider")
-		if err != nil {
-			return err
-		}
-		uuid, err := stringField(entryName, entry, "uuid")
-		if err != nil {
-			return err
-		}
-		environment := EnvironmentConfig{Type: environmentType, Provider: provider, UUID: uuid}
-		if environment.Type != EnvironmentType1Password {
-			return fmt.Errorf("%s has unsupported type %q", entryName, environment.Type)
-		}
-		if environment.Provider == "" {
-			return fmt.Errorf("%s provider is required", entryName)
-		}
-		if environment.UUID == "" {
-			return fmt.Errorf("%s uuid is required", entryName)
 		}
 		c.Environments[name] = environment
 	}
+	for _, name := range sortedMapKeys(file.Profiles) {
+		c.Profiles[name] = ProfileConfig{Environments: file.Profiles[name]}
+	}
 
-	m, err = rawTable(raw, "profiles")
-	if err != nil {
+	return nil
+}
+
+func configDecodeError(err error) error {
+	var strictErr *toml.StrictMissingError
+	if !errors.As(err, &strictErr) || len(strictErr.Errors) == 0 {
 		return err
 	}
-	for name, value := range m {
-		environments, err := profileEnvironments("profiles."+name, value)
-		if err != nil {
-			return err
-		}
-		c.Profiles[name] = ProfileConfig{Environments: environments}
-	}
 
+	keys := make([]string, 0, len(strictErr.Errors))
+	for _, fieldErr := range strictErr.Errors {
+		keys = append(keys, strings.Join(fieldErr.Key(), "."))
+	}
+	sort.Strings(keys)
+	if len(keys) == 1 {
+		return fmt.Errorf("unsupported config key %q", keys[0])
+	}
+	return fmt.Errorf("unsupported config keys: %s", strings.Join(keys, ", "))
+}
+
+func (c *Config) validateIdentityConfig(name string, identity IdentityConfig) error {
+	entryName := "identities." + name
+	if identity.Type == "" {
+		return fmt.Errorf("%s type is required", entryName)
+	}
+	if identity.Type != IdentityTypeBasic && identity.Type != IdentityTypeYubiKey && identity.Type != IdentityTypeSecureEnclave {
+		return fmt.Errorf("%s has unsupported type %q", entryName, identity.Type)
+	}
+	if identity.File == "" {
+		return fmt.Errorf("%s file is required", entryName)
+	}
+	return c.validateConfigFilePath(entryName+".file", identity.File)
+}
+
+func (c *Config) validateProviderConfig(name string, provider ProviderConfig) error {
+	entryName := "providers." + name
+	if provider.Type == "" {
+		return fmt.Errorf("%s type is required", entryName)
+	}
+	if provider.Type != ProviderType1Password {
+		return fmt.Errorf("%s has unsupported type %q", entryName, provider.Type)
+	}
+	if provider.Identity == "" {
+		return fmt.Errorf("%s identity is required", entryName)
+	}
+	if provider.File == "" {
+		return fmt.Errorf("%s file is required", entryName)
+	}
+	return c.validateConfigFilePath(entryName+".file", provider.File)
+}
+
+func (c *Config) validateEnvironmentConfig(name string, environment EnvironmentConfig) error {
+	entryName := "environments." + name
+	if environment.Type == "" {
+		return fmt.Errorf("%s type is required", entryName)
+	}
+	if environment.Type != EnvironmentType1Password {
+		return fmt.Errorf("%s has unsupported type %q", entryName, environment.Type)
+	}
+	if environment.Provider == "" {
+		return fmt.Errorf("%s provider is required", entryName)
+	}
+	if environment.UUID == "" {
+		return fmt.Errorf("%s uuid is required", entryName)
+	}
 	return nil
 }
 
@@ -396,81 +357,6 @@ func (c *Config) validateReferences() error {
 	return nil
 }
 
-func rawTable(raw map[string]any, key string) (map[string]any, error) {
-	value, ok := raw[key]
-	if !ok {
-		return map[string]any{}, nil
-	}
-	return tableValue(key, value)
-}
-
-func tableValue(name string, value any) (map[string]any, error) {
-	m, ok := value.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("%s must be a table", name)
-	}
-	return m, nil
-}
-
-func ensureAllowedKeys(name string, m map[string]any, allowedKeys ...string) error {
-	allowed := map[string]bool{}
-	for _, key := range allowedKeys {
-		allowed[key] = true
-	}
-	for key := range m {
-		if !allowed[key] {
-			return fmt.Errorf("%s has unsupported key %q", name, key)
-		}
-	}
-	return nil
-}
-
-func stringField(name string, m map[string]any, key string) (string, error) {
-	value, ok := m[key]
-	if !ok {
-		return "", nil
-	}
-	s, ok := value.(string)
-	if !ok {
-		return "", fmt.Errorf("%s.%s must be a string", name, key)
-	}
-	return s, nil
-}
-
-func profileEnvironments(name string, value any) ([]string, error) {
-	switch v := value.(type) {
-	case []any:
-		return stringArray(name, v)
-	case map[string]any:
-		if err := ensureAllowedKeys(name, v, "environments"); err != nil {
-			return nil, err
-		}
-		environments, ok := v["environments"]
-		if !ok {
-			return nil, fmt.Errorf("%s environments is required", name)
-		}
-		items, ok := environments.([]any)
-		if !ok {
-			return nil, fmt.Errorf("%s environments must be an array of strings", name)
-		}
-		return stringArray(name+".environments", items)
-	default:
-		return nil, fmt.Errorf("%s must be an array of environments or a table with environments", name)
-	}
-}
-
-func stringArray(name string, items []any) ([]string, error) {
-	values := make([]string, 0, len(items))
-	for i, item := range items {
-		s, ok := item.(string)
-		if !ok {
-			return nil, fmt.Errorf("%s[%d] must be a string", name, i)
-		}
-		values = append(values, s)
-	}
-	return values, nil
-}
-
 func (c *Config) Write() error {
 	var b strings.Builder
 	b.WriteString("# cage global config\n")
@@ -479,8 +365,12 @@ func (c *Config) Write() error {
 	if len(c.Identities) > 0 {
 		b.WriteString("[identities]\n")
 		for _, name := range sortedMapKeys(c.Identities) {
-			identity := c.Identities[name]
-			fmt.Fprintf(&b, "%s = { type = %s, file = %s }\n", tomlKey(name), tomlString(identity.Type), tomlString(identity.File))
+			line, err := tomlEntry(name, c.Identities[name])
+			if err != nil {
+				return err
+			}
+			b.WriteString(line)
+			b.WriteByte('\n')
 		}
 		b.WriteString("\n")
 	}
@@ -488,8 +378,12 @@ func (c *Config) Write() error {
 	if len(c.Providers) > 0 {
 		b.WriteString("[providers]\n")
 		for _, name := range sortedMapKeys(c.Providers) {
-			provider := c.Providers[name]
-			fmt.Fprintf(&b, "%s = { type = %s, identity = %s, file = %s }\n", tomlKey(name), tomlString(provider.Type), tomlString(provider.Identity), tomlString(provider.File))
+			line, err := tomlEntry(name, c.Providers[name])
+			if err != nil {
+				return err
+			}
+			b.WriteString(line)
+			b.WriteByte('\n')
 		}
 		b.WriteString("\n")
 	}
@@ -497,8 +391,12 @@ func (c *Config) Write() error {
 	if len(c.Environments) > 0 {
 		b.WriteString("[environments]\n")
 		for _, name := range sortedMapKeys(c.Environments) {
-			environment := c.Environments[name]
-			fmt.Fprintf(&b, "%s = { type = %s, provider = %s, uuid = %s }\n", tomlKey(name), tomlString(environment.Type), tomlString(environment.Provider), tomlString(environment.UUID))
+			line, err := tomlEntry(name, c.Environments[name])
+			if err != nil {
+				return err
+			}
+			b.WriteString(line)
+			b.WriteByte('\n')
 		}
 		b.WriteString("\n")
 	}
@@ -506,7 +404,12 @@ func (c *Config) Write() error {
 	if len(c.Profiles) > 0 {
 		b.WriteString("[profiles]\n")
 		for _, name := range sortedMapKeys(c.Profiles) {
-			fmt.Fprintf(&b, "%s = %s\n", tomlKey(name), tomlStringArray(c.Profiles[name].Environments))
+			line, err := tomlEntry(name, c.Profiles[name].Environments)
+			if err != nil {
+				return err
+			}
+			b.WriteString(line)
+			b.WriteByte('\n')
 		}
 		b.WriteString("\n")
 	}
@@ -533,48 +436,10 @@ func sortedMapKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-func tomlKey(key string) string {
-	if createdNamePattern.MatchString(key) {
-		return key
-	}
-	return tomlString(key)
-}
-
-func tomlStringArray(values []string) string {
-	quoted := make([]string, 0, len(values))
-	for _, value := range values {
-		quoted = append(quoted, tomlString(value))
-	}
-	return "[" + strings.Join(quoted, ", ") + "]"
-}
-
-func tomlString(value string) string {
+func tomlEntry(name string, value any) (string, error) {
 	var b strings.Builder
-	b.WriteByte('"')
-	for _, r := range value {
-		switch r {
-		case '\\':
-			b.WriteString(`\\`)
-		case '"':
-			b.WriteString(`\"`)
-		case '\b':
-			b.WriteString(`\b`)
-		case '\t':
-			b.WriteString(`\t`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\f':
-			b.WriteString(`\f`)
-		case '\r':
-			b.WriteString(`\r`)
-		default:
-			if r < 0x20 || r == utf8.RuneError {
-				fmt.Fprintf(&b, `\u%04X`, r)
-			} else {
-				b.WriteRune(r)
-			}
-		}
+	if err := toml.NewEncoder(&b).SetTablesInline(true).Encode(map[string]any{name: value}); err != nil {
+		return "", fmt.Errorf("encode config entry %q: %w", name, err)
 	}
-	b.WriteByte('"')
-	return b.String()
+	return strings.TrimSuffix(b.String(), "\n"), nil
 }

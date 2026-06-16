@@ -2,6 +2,7 @@ package cage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -103,7 +104,7 @@ func TestResolveVariablesZeroesProviderTokenAfterClientInitializationError(t *te
 	app := &App{
 		decryptProviderToken: func(*Config, string) ([]byte, error) { return token, nil },
 		newOnePasswordEnvironments: func(context.Context, []byte, string) (onepassword.EnvironmentsAPI, error) {
-			return nil, fmt.Errorf("boom")
+			return nil, errors.New("boom")
 		},
 	}
 

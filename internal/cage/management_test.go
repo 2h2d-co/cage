@@ -2,8 +2,8 @@ package cage
 
 import (
 	"path/filepath"
-	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -34,7 +34,7 @@ func TestEnvironmentAndProfileCommandsManageConfig(t *testing.T) {
 	if cfg.Environments["dev"].Provider != "project1" || cfg.Environments["dev"].UUID != "dev-uuid" {
 		t.Fatalf("dev environment = %#v", cfg.Environments["dev"])
 	}
-	if !reflect.DeepEqual(cfg.Profiles["default"].Environments, []string{"dev", "stage"}) {
+	if !slices.Equal(cfg.Profiles["default"].Environments, []string{"dev", "stage"}) {
 		t.Fatalf("default profile = %#v", cfg.Profiles["default"].Environments)
 	}
 
@@ -47,7 +47,7 @@ func TestEnvironmentAndProfileCommandsManageConfig(t *testing.T) {
 	if cfg.Environments["stage"].UUID != "stage-uuid-2" {
 		t.Fatalf("stage UUID = %q", cfg.Environments["stage"].UUID)
 	}
-	if !reflect.DeepEqual(cfg.Profiles["default"].Environments, []string{"stage"}) {
+	if !slices.Equal(cfg.Profiles["default"].Environments, []string{"stage"}) {
 		t.Fatalf("updated default profile = %#v", cfg.Profiles["default"].Environments)
 	}
 

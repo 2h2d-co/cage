@@ -3,7 +3,7 @@
 cage \- minimal age-backed 1Password environment secret manager
 .SH SYNOPSIS
 .B cage
-[--config PATH] [--verbose] COMMAND [ARGS]
+[--config PATH] [--verbose] [--debug] COMMAND [ARGS]
 .PP
 .B cage get
 [--profiles LIST] [--environments LIST] [--json] ENV_VAR|*
@@ -106,7 +106,7 @@ Generate shell completions for bash, zsh, fish, or powershell.
 .B cage man DIR
 Generate full roff manpages for cage and subcommands.
 .SH SECURITY NOTES
-Provider tokens are decrypted only in memory to initialize the 1Password SDK. 1Password Environments are not cached on disk or across loads. Config directories, config files, identity files, and provider files must be owned by the current user and not accessible by group or others. cage strips common credential, injection, and debug environment variables from age plugin subprocesses and redacts common secret-looking values in errors.
+Provider tokens are decrypted only in memory to initialize the 1Password SDK. 1Password Environments are not cached on disk or across loads. Config directories, config files, identity files, and provider files must be owned by the current user and not accessible by group or others. cage strips common credential, injection, and debug environment variables from age plugin subprocesses and redacts common secret-looking values in errors. Use --verbose for high-level diagnostics or --debug for extra details.
 .SH PROJECT
 .UR https://github.com/2h2d-co/cage
 .UE

@@ -71,6 +71,48 @@ func TestAgePluginEnvironmentAllowsOnlyOperationalKeys(t *testing.T) {
 	}
 }
 
+func TestBuildChildEnvironmentAllowsNonShellParentNames(t *testing.T) {
+	env, err := buildChildEnvironment(childEnvironmentUserExec, []string{
+		"FOO-BAR=hyphen",
+		"foo.bar=dot",
+		"9VAR=digit",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := "\n" + strings.Join(env, "\n") + "\n"
+	for _, expected := range []string{
+		"FOO-BAR=hyphen",
+		"foo.bar=dot",
+		"9VAR=digit",
+	} {
+		if !strings.Contains(joined, "\n"+expected+"\n") {
+			t.Fatalf("child environment removed parent variable %s from %s", expected, joined)
+		}
+	}
+}
+
+func TestAgePluginEnvironmentIgnoresDisallowedNonShellParentNames(t *testing.T) {
+	env, err := buildChildEnvironment(childEnvironmentAgePlugin, []string{
+		"PATH=/usr/bin:/bin",
+		"FOO-BAR=hyphen",
+		"foo.bar=dot",
+		"9VAR=digit",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := "\n" + strings.Join(env, "\n") + "\n"
+	for _, unexpected := range []string{"FOO-BAR=", "foo.bar=", "9VAR="} {
+		if strings.Contains(joined, "\n"+unexpected) {
+			t.Fatalf("plugin environment leaked %s in %s", unexpected, joined)
+		}
+	}
+	if !strings.Contains(joined, "\nPATH=/usr/bin:/bin\n") {
+		t.Fatalf("plugin environment missing PATH: %s", joined)
+	}
+}
+
 func TestBuildChildEnvironmentRejectsNULValue(t *testing.T) {
 	_, err := buildChildEnvironment(childEnvironmentUserExec, []string{"PATH=/usr/bin:/bin"}, map[string]string{"CAGE_TEST": "bad\x00value"})
 	if err == nil {
@@ -83,9 +125,11 @@ func TestBuildChildEnvironmentRejectsNULValue(t *testing.T) {
 
 func TestWithPluginChildEnvironmentRestoresVariables(t *testing.T) {
 	tokenKey := "OP_SERVICE_ACCOUNT_" + "TOKEN"
+	nonShellName := "CAGE-PLUGIN-TEST-KEEP"
 	t.Setenv("PATH", "/usr/bin:/bin")
 	t.Setenv(tokenKey, "secret")
 	t.Setenv("CAGE_PLUGIN_TEST_KEEP", "value")
+	t.Setenv(nonShellName, "non-shell-name")
 	sentinelErr := errors.New("sentinel")
 
 	err := withPluginChildEnvironment(func() error {
@@ -94,6 +138,9 @@ func TestWithPluginChildEnvironmentRestoresVariables(t *testing.T) {
 		}
 		if _, ok := os.LookupEnv("CAGE_PLUGIN_TEST_KEEP"); ok {
 			t.Fatal("CAGE_PLUGIN_TEST_KEEP was present inside plugin environment")
+		}
+		if _, ok := os.LookupEnv(nonShellName); ok {
+			t.Fatalf("%s was present inside plugin environment", nonShellName)
 		}
 		if got := os.Getenv("PATH"); got != "/usr/bin:/bin" {
 			t.Fatalf("PATH = %q, want /usr/bin:/bin", got)
@@ -108,6 +155,9 @@ func TestWithPluginChildEnvironmentRestoresVariables(t *testing.T) {
 	}
 	if got := os.Getenv("CAGE_PLUGIN_TEST_KEEP"); got != "value" {
 		t.Fatalf("CAGE_PLUGIN_TEST_KEEP after restore = %q, want value", got)
+	}
+	if got := os.Getenv(nonShellName); got != "non-shell-name" {
+		t.Fatalf("%s after restore = %q, want non-shell-name", nonShellName, got)
 	}
 }
 

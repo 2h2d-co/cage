@@ -40,10 +40,10 @@ func (a *App) newEnvironmentCreateCommand() *cobra.Command {
 				return err
 			}
 			if providerName == "" {
-				return fmt.Errorf("--provider is required")
+				return errors.New("--provider is required")
 			}
 			if uuid == "" {
-				return fmt.Errorf("--uuid is required")
+				return errors.New("--uuid is required")
 			}
 
 			cfg, err := a.loadConfig()
@@ -180,7 +180,7 @@ func (a *App) newProfileCreateCommand() *cobra.Command {
 			}
 			environments := parseCommaList(environmentsValue)
 			if len(environments) == 0 {
-				return fmt.Errorf("--environments is required")
+				return errors.New("--environments is required")
 			}
 
 			cfg, err := a.loadConfig()

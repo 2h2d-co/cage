@@ -37,11 +37,11 @@ func buildChildEnvironment(scope childEnvironmentScope, parent []string, overrid
 		if !ok {
 			continue
 		}
-		if err := validateEnvironmentVariableName(key); err != nil {
-			return nil, fmt.Errorf("parent environment: %w", err)
-		}
 		if !scope.allowsInheritedEnvironment(key) {
 			continue
+		}
+		if err := validateProcessEnvironmentKey(key); err != nil {
+			return nil, fmt.Errorf("parent environment: %w", err)
 		}
 		if strings.ContainsRune(value, '\x00') {
 			return nil, fmt.Errorf("parent environment variable %q contains NUL in value", key)
@@ -63,6 +63,19 @@ func buildChildEnvironment(scope childEnvironmentScope, parent []string, overrid
 	}
 
 	return sortedEnvironment(values), nil
+}
+
+func validateProcessEnvironmentKey(key string) error {
+	if key == "" {
+		return errors.New("environment variable name is empty")
+	}
+	if strings.Contains(key, "=") {
+		return fmt.Errorf("environment variable name %q contains =", key)
+	}
+	if strings.ContainsRune(key, '\x00') {
+		return fmt.Errorf("environment variable name %q contains NUL", key)
+	}
+	return nil
 }
 
 func (scope childEnvironmentScope) allowsInheritedEnvironment(key string) bool {
@@ -142,7 +155,7 @@ func replaceProcessEnvironment(env []string) error {
 		if !ok {
 			continue
 		}
-		if err := validateEnvironmentVariableName(key); err != nil {
+		if err := validateProcessEnvironmentKey(key); err != nil {
 			return err
 		}
 		if err := os.Setenv(key, value); err != nil {

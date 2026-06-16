@@ -82,18 +82,12 @@ work2 = { type = "secure-enclave", file = "work2.identity" }
 project1 = { type = "1password", identity = "local", file = "project1.1p.age" }
 project2 = { type = "1password", identity = "work2", file = "project2.1p.age" }
 
-[environments.dev]
-type = "1password-environment"
-provider = "project1"
-uuid = "00000000-0000-0000-0000-000000000000"
-
 [environments]
+dev = { type = "1password-environment", provider = "project1", uuid = "00000000-0000-0000-0000-000000000000" }
 stage = { type = "1password-environment", provider = "project2", uuid = "11111111-1111-1111-1111-111111111111" }
 
-[profiles.default]
-environments = ["dev"]
-
 [profiles]
+default = ["dev"]
 proj2-prod = ["dev", "stage"]
 ```
 
@@ -241,7 +235,7 @@ A checked-in starter manpage is also available at `docs/man/cage.1`.
 - Config directories, config files, identity files, and provider files must be owned by the current user and not accessible by group or others.
 - Cage strips common credential, injection, and debug environment variables from age plugin subprocesses.
 - Errors are redacted for common secret-looking values before cage prints them.
-- Use `--verbose` or `--debug` for diagnostics; secret values are not intentionally logged.
+- Use `--verbose` for high-level diagnostics or `--debug` for extra details; secret values are not intentionally logged.
 
 ## License
 
