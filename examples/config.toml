@@ -1,5 +1,6 @@
 # Copy to $XDG_CONFIG_HOME/cage/config.toml (or ~/.config/cage/config.toml when XDG_CONFIG_HOME is unset), or set CAGE_CONFIG to another path, and replace UUIDs.
 # Identity and provider files must be relative paths under the config file directory.
+# Optional Environment caches use a positive Go duration ttl and any configured identity.
 
 [identities]
 local = { type = "basic", file = "local.identity" }
@@ -11,7 +12,7 @@ project1 = { type = "1password", identity = "local", file = "project1.1p.age" }
 project2 = { type = "1password", identity = "work2", file = "project2.1p.age" }
 
 [environments]
-dev = { type = "1password-environment", provider = "project1", uuid = "00000000-0000-0000-0000-000000000000" }
+dev = { type = "1password-environment", provider = "project1", uuid = "00000000-0000-0000-0000-000000000000", cache = { ttl = "15m", identity = "local" } }
 stage = { type = "1password-environment", provider = "project2", uuid = "11111111-1111-1111-1111-111111111111" }
 
 [profiles]

@@ -21,10 +21,6 @@ goreleaser = "latest"
 description = "Run Go tests"
 run = "go test ./..."
 
-[tasks.integration-test]
-description = "Run end-to-end integration tests"
-run = "go test -v -count=1 -tags=integration ./integration"
-
 [tasks."integration:setup:basic"]
 description = "Set up the basic integration identity/provider/environments/profile"
 usage = '''
@@ -114,12 +110,16 @@ scripts/integration/setup-yubikey-touch-pin.sh "${args[@]}"
 '''
 
 [tasks."integration:run:all"]
-description = "Run all configured integration profile tests"
+description = "Run the full integration suite"
 file = "scripts/integration/run-all.sh"
 
 [tasks."integration:run:basic"]
 description = "Run only the basic integration profile test"
 file = "scripts/integration/run-basic.sh"
+
+[tasks."integration:run:cache"]
+description = "Run only the encrypted cache integration tests"
+file = "scripts/integration/run-cache.sh"
 
 [tasks."integration:run:secure-enclave"]
 description = "Run only the Secure Enclave integration profile test"

@@ -6,10 +6,10 @@ cage \- minimal age-backed 1Password environment secret manager
 [--config PATH] [--verbose] [--debug] COMMAND [ARGS]
 .PP
 .B cage get
-[--profiles LIST] [--environments LIST] [--json] ENV_VAR|*
+[--profiles LIST] [--environments LIST] [--skip-cache|--refresh-cache] [--json] ENV_VAR|*
 .PP
 .B cage exec
-[--profiles LIST] [--environments LIST] -- COMMAND [ARG...]
+[--profiles LIST] [--environments LIST] [--skip-cache|--refresh-cache] -- COMMAND [ARG...]
 .PP
 .B cage environment
 create|list|delete ...
@@ -39,6 +39,13 @@ Supported provider type is
 .BR 1password .
 Supported environment type is
 .BR 1password-environment .
+.PP
+Environment entries may include an optional encrypted cache object, for example
+.BR "cache = { ttl = \"15m\", identity = \"local\" }" .
+The TTL must be a positive Go duration string. Changing the TTL caps already-written entries by the current config TTL. Cache files are stored under
+.BR ${XDG_CACHE_HOME:-$HOME/.cache}/cage/environments/
+and cache state is tracked in
+.BR ${XDG_STATE_HOME:-$HOME/.local/state}/cage/cage.db .
 .SH RESOLUTION
 Profiles and environments are selected with comma-separated
 .B --profiles
@@ -49,6 +56,12 @@ flags, or with
 and
 .BR CAGE_ENVIRONMENTS .
 Flags override environment variables. Profiles load first in order, then explicit environments. Last loaded variable wins. There is no default profile.
+.PP
+Configured encrypted caches are used before pulling from 1Password. Use
+.B --skip-cache
+to avoid cache reads and writes, or
+.B --refresh-cache
+to pull fresh values and update configured caches.
 .SH COMMANDS
 .TP
 .B cage identity basic create NAME
@@ -72,7 +85,9 @@ Read a 1Password service account token securely or from stdin, encrypt it to one
 with mode 0600, and update config.
 .TP
 .B cage environment create NAME --provider PROVIDER --uuid UUID
-Create a 1Password Environment config entry.
+Create a 1Password Environment config entry. Add
+.B --cache-ttl DURATION --cache-identity IDENTITY
+to enable encrypted caching for that Environment.
 .TP
 .B cage environment list
 List configured environments.
@@ -106,7 +121,7 @@ Generate shell completions for bash, zsh, fish, or powershell.
 .B cage man DIR
 Generate full roff manpages for cage and subcommands.
 .SH SECURITY NOTES
-Provider tokens are decrypted only in memory to initialize the 1Password SDK. 1Password Environments are not cached on disk or across loads. Config directories, config files, identity files, and provider files must be owned by the current user and not accessible by group or others. cage strips common credential, injection, and debug environment variables from age plugin subprocesses and redacts common secret-looking values in errors. Use --verbose for high-level diagnostics or --debug for extra details.
+Provider tokens are decrypted only in memory to initialize the 1Password SDK. 1Password Environments are not cached in memory across loads. Optional on-disk Environment caches are always age-encrypted to the configured cache identity. Expired, inactive, unreadable, and replaced cache files are removed with normal file deletion; cache secrecy relies on age encryption, not overwrite passes. Config directories, config files, identity files, provider files, cache directories, cached Environment files, and the cache state database must be owned by the current user and not accessible by group or others. cage strips common credential, injection, and debug environment variables from age plugin subprocesses and redacts common secret-looking values in errors. Use --verbose for high-level diagnostics or --debug for extra details.
 .SH PROJECT
 .UR https://github.com/2h2d-co/cage
 .UE

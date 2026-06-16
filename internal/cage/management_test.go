@@ -71,6 +71,26 @@ func TestEnvironmentAndProfileCommandsManageConfig(t *testing.T) {
 	}
 }
 
+func TestEnvironmentCreateCommandConfiguresEncryptedCache(t *testing.T) {
+	path := filepath.Join(privateTempDir(t), "config.toml")
+	cfg := emptyConfig(path)
+	cfg.Identities["local"] = IdentityConfig{Type: IdentityTypeBasic, File: "local.identity"}
+	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "local", File: "project1.1p.age"}
+	if err := cfg.Write(); err != nil {
+		t.Fatal(err)
+	}
+
+	executeCage(t, path, "environment", "create", "cached", "--provider", "project1", "--uuid", "cached-uuid", "--cache-ttl", "30m", "--cache-identity", "local")
+	loaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := loaded.Environments["cached"].Cache
+	if cache == nil || cache.TTL != "30m" || cache.Identity != "local" {
+		t.Fatalf("cache = %#v, want ttl 30m identity local", cache)
+	}
+}
+
 func TestEnvironmentAndProfileCommandsValidateReferences(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("cage commands are macOS-only")

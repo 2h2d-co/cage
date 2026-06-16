@@ -24,6 +24,8 @@ func (a *App) newEnvironmentCommand() *cobra.Command {
 func (a *App) newEnvironmentCreateCommand() *cobra.Command {
 	var providerName string
 	var uuid string
+	var cacheTTL string
+	var cacheIdentity string
 	var yes bool
 
 	cmd := &cobra.Command{
@@ -57,11 +59,27 @@ func (a *App) newEnvironmentCreateCommand() *cobra.Command {
 			if provider.Type != ProviderType1Password {
 				return fmt.Errorf("provider %q has type %q, not %q", providerName, provider.Type, ProviderType1Password)
 			}
+			var cache *EnvironmentCacheConfig
+			if cacheTTL != "" || cacheIdentity != "" {
+				if cacheTTL == "" {
+					return errors.New("--cache-ttl is required when --cache-identity is set")
+				}
+				if cacheIdentity == "" {
+					return errors.New("--cache-identity is required when --cache-ttl is set")
+				}
+				if _, err := parseCacheTTL(cacheTTL); err != nil {
+					return fmt.Errorf("--cache-ttl: %w", err)
+				}
+				if _, ok := cfg.Identities[cacheIdentity]; !ok {
+					return fmt.Errorf("unknown cache identity %q", cacheIdentity)
+				}
+				cache = &EnvironmentCacheConfig{TTL: cacheTTL, Identity: cacheIdentity}
+			}
 			if err := a.confirmEnvironmentOverwrite(cfg, name, yes); err != nil {
 				return err
 			}
 
-			cfg.Environments[name] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: providerName, UUID: uuid}
+			cfg.Environments[name] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: providerName, UUID: uuid, Cache: cache}
 			if err := cfg.Write(); err != nil {
 				return err
 			}
@@ -71,6 +89,8 @@ func (a *App) newEnvironmentCreateCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&providerName, "provider", "", "configured 1Password provider used to load the Environment")
 	cmd.Flags().StringVar(&uuid, "uuid", "", "1Password Environment UUID")
+	cmd.Flags().StringVar(&cacheTTL, "cache-ttl", "", "enable encrypted caching with this Go duration TTL, for example 15m or 1h")
+	cmd.Flags().StringVar(&cacheIdentity, "cache-identity", "", "configured identity used to encrypt cached Environment values")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "answer yes to overwrite confirmations")
 	return cmd
 }
@@ -308,7 +328,15 @@ func (a *App) listConfiguredEnvironments(cfg *Config) error {
 		if _, ok := cfg.Providers[environment.Provider]; ok {
 			providerStatus = "present"
 		}
-		if _, err := fmt.Fprintf(a.out, "  %s\ttype=%s\tprovider=%s\tprovider-status=%s\tuuid=%s\n", name, environment.Type, environment.Provider, providerStatus, environment.UUID); err != nil {
+		cacheStatus := "disabled"
+		if environment.Cache != nil {
+			identityStatus := "missing"
+			if _, ok := cfg.Identities[environment.Cache.Identity]; ok {
+				identityStatus = "present"
+			}
+			cacheStatus = fmt.Sprintf("ttl=%s,identity=%s,identity-status=%s", environment.Cache.TTL, environment.Cache.Identity, identityStatus)
+		}
+		if _, err := fmt.Fprintf(a.out, "  %s\ttype=%s\tprovider=%s\tprovider-status=%s\tuuid=%s\tcache=%s\n", name, environment.Type, environment.Provider, providerStatus, environment.UUID, cacheStatus); err != nil {
 			return err
 		}
 	}

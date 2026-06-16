@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	onepassword "github.com/1password/onepassword-sdk-go"
 	"github.com/spf13/cobra"
@@ -18,6 +19,14 @@ import (
 type providerTokenDecryptor func(*Config, string) ([]byte, error)
 
 type onePasswordEnvironmentsFactory func(context.Context, []byte, string) (onepassword.EnvironmentsAPI, error)
+
+type cacheMode int
+
+const (
+	cacheModeUse cacheMode = iota
+	cacheModeSkip
+	cacheModeRefresh
+)
 
 // Selection contains profile and environment names selected for resolution.
 type Selection struct {
@@ -28,6 +37,24 @@ type Selection struct {
 func addSelectionFlags(cmd *cobra.Command, profiles *string, environments *string) {
 	cmd.Flags().StringVar(profiles, "profiles", "", "comma-separated profile names; overrides CAGE_PROFILES")
 	cmd.Flags().StringVar(environments, "environments", "", "comma-separated environment names; overrides CAGE_ENVIRONMENTS")
+}
+
+func addCacheFlags(cmd *cobra.Command, skipCache *bool, refreshCache *bool) {
+	cmd.Flags().BoolVar(skipCache, "skip-cache", false, "do not read or write encrypted environment caches")
+	cmd.Flags().BoolVar(refreshCache, "refresh-cache", false, "ignore existing encrypted environment caches and update them after pulling fresh values")
+}
+
+func cacheModeFromFlags(skipCache, refreshCache bool) (cacheMode, error) {
+	if skipCache && refreshCache {
+		return cacheModeUse, errors.New("--skip-cache and --refresh-cache cannot be used together")
+	}
+	if skipCache {
+		return cacheModeSkip, nil
+	}
+	if refreshCache {
+		return cacheModeRefresh, nil
+	}
+	return cacheModeUse, nil
 }
 
 func selectionFromCommand(cmd *cobra.Command, profilesFlag, environmentsFlag string) Selection {
@@ -82,13 +109,65 @@ func (s Selection) environmentOrder(cfg *Config) ([]string, error) {
 	return ordered, nil
 }
 
-func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selection) (map[string]string, error) {
+func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selection, mode cacheMode) (map[string]string, error) {
 	if err := cfg.validateReferences(); err != nil {
 		return nil, err
 	}
 	ordered, err := selection.environmentOrder(cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	var cacheStore *environmentCacheStore
+	if mode != cacheModeSkip && anySelectedEnvironmentCaches(cfg, ordered) {
+		cacheStore, err = openEnvironmentCacheStore(true)
+		if err != nil {
+			return nil, fmt.Errorf("open environment cache: %w", err)
+		}
+		defer func() { _ = cacheStore.close() }()
+	}
+
+	results := make([]environmentLoadResult, len(ordered))
+	fetchIndexes := []int{}
+	now := time.Now()
+	for i, environmentName := range ordered {
+		environment := cfg.Environments[environmentName]
+		if environment.Type != EnvironmentType1Password {
+			return nil, fmt.Errorf("environment %q has unsupported type %q", environmentName, environment.Type)
+		}
+		results[i].name = environmentName
+		if cacheStore == nil || environment.Cache == nil || mode == cacheModeRefresh {
+			fetchIndexes = append(fetchIndexes, i)
+			continue
+		}
+
+		entry, found, active, err := cacheStore.lookupEnvironment(cfg, environmentName, now)
+		if err != nil {
+			return nil, fmt.Errorf("check cache for environment %q: %w", environmentName, err)
+		}
+		if found && !active {
+			if err := cacheStore.deleteEntry(entry); err != nil {
+				a.warnf("delete inactive cache for environment %s: %s", environmentName, err)
+			}
+		}
+		if !active {
+			fetchIndexes = append(fetchIndexes, i)
+			continue
+		}
+
+		a.verbosef("loading environment %s from cache", environmentName)
+		variables, err := cacheStore.readEnvironment(cfg, environmentName, entry)
+		if err != nil {
+			a.warnf("discard unreadable cache for environment %s: %s", environmentName, err)
+			if err := cacheStore.deleteEntry(entry); err != nil {
+				a.warnf("delete unreadable cache for environment %s: %s", environmentName, err)
+			}
+			fetchIndexes = append(fetchIndexes, i)
+			continue
+		}
+		results[i].variables = variables
+		results[i].masked = countMaskedVariables(variables)
+		results[i].fromCache = true
 	}
 
 	decryptToken := a.decryptProviderToken
@@ -101,11 +180,9 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 	}
 
 	clients := map[string]onepassword.EnvironmentsAPI{}
-	for _, environmentName := range ordered {
+	for _, index := range fetchIndexes {
+		environmentName := ordered[index]
 		environment := cfg.Environments[environmentName]
-		if environment.Type != EnvironmentType1Password {
-			return nil, fmt.Errorf("environment %q has unsupported type %q", environmentName, environment.Type)
-		}
 		if _, ok := clients[environment.Provider]; ok {
 			continue
 		}
@@ -122,12 +199,11 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 		clients[environment.Provider] = client
 	}
 
-	results := make([]environmentLoadResult, len(ordered))
 	var wg sync.WaitGroup
-	for i, environmentName := range ordered {
+	for _, index := range fetchIndexes {
+		environmentName := ordered[index]
 		environment := cfg.Environments[environmentName]
 		client := clients[environment.Provider]
-		results[i].name = environmentName
 		a.verbosef("loading environment %s", environmentName)
 
 		wg.Add(1)
@@ -139,19 +215,16 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 				return
 			}
 
-			masked := 0
 			for _, variable := range response.Variables {
 				if err := validateEnvironmentVariableName(variable.Name); err != nil {
 					results[index].err = fmt.Errorf("environment %q returned invalid variable name: %w", name, err)
 					return
 				}
-				if variable.Masked {
-					masked++
-				}
 			}
 			results[index].variables = response.Variables
-			results[index].masked = masked
-		}(i, environmentName, environment.UUID, client)
+			results[index].masked = countMaskedVariables(response.Variables)
+			results[index].fetchedAt = time.Now()
+		}(index, environmentName, environment.UUID, client)
 	}
 	wg.Wait()
 
@@ -160,11 +233,21 @@ func (a *App) resolveVariables(ctx context.Context, cfg *Config, selection Selec
 		if result.err != nil {
 			return nil, result.err
 		}
+		if cacheStore != nil && !result.fromCache && cfg.Environments[result.name].Cache != nil {
+			if err := cacheStore.saveEnvironment(cfg, result.name, result.variables, result.fetchedAt); err != nil {
+				return nil, fmt.Errorf("cache environment %q: %w", result.name, err)
+			}
+		}
 		for _, variable := range result.variables {
 			resolved[variable.Name] = variable.Value
 		}
-		a.verbosef("loaded environment %s", result.name)
-		a.debugf("loaded environment %s: %d variables (%d masked)", result.name, len(result.variables), result.masked)
+		if result.fromCache {
+			a.verbosef("loaded environment %s from cache", result.name)
+			a.debugf("loaded environment %s from cache: %d variables (%d masked)", result.name, len(result.variables), result.masked)
+		} else {
+			a.verbosef("loaded environment %s", result.name)
+			a.debugf("loaded environment %s: %d variables (%d masked)", result.name, len(result.variables), result.masked)
+		}
 	}
 	return resolved, nil
 }
@@ -201,7 +284,19 @@ type environmentLoadResult struct {
 	name      string
 	variables []onepassword.EnvironmentVariable
 	masked    int
+	fetchedAt time.Time
+	fromCache bool
 	err       error
+}
+
+func countMaskedVariables(variables []onepassword.EnvironmentVariable) int {
+	masked := 0
+	for _, variable := range variables {
+		if variable.Masked {
+			masked++
+		}
+	}
+	return masked
 }
 
 func validateEnvironmentVariableName(name string) error {
@@ -255,18 +350,8 @@ func decryptProviderToken(cfg *Config, providerName string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read encrypted provider file: %w", err)
 	}
-	switch identity.Type {
-	case IdentityTypeSecureEnclave:
-		notifyActionNeeded(fmt.Sprintf("approve Secure Enclave access for identity %q", provider.Identity))
-	case IdentityTypeYubiKey:
-		identityPath := cfg.ResolveFile(identity.File)
-		preNotify, err := shouldPreNotifyYubiKeyTouch(identityPath)
-		if err != nil {
-			return nil, err
-		}
-		if preNotify {
-			notifyActionNeeded(fmt.Sprintf("touch the YubiKey for identity %q when it blinks", provider.Identity))
-		}
+	if err := notifyBeforeIdentityUse(cfg, provider.Identity, identity); err != nil {
+		return nil, err
 	}
 	plaintext, err := decryptWithIdentityFile(ciphertext, cfg.ResolveFile(identity.File))
 	if err != nil {

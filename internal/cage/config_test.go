@@ -39,7 +39,7 @@ project1 = { type = "1password", identity = "work1", file = "project1.1p.age" }
 project2 = { type = "1password", identity = "work2", file = "project2.1p.age" }
 
 [environments]
-dev = { type = "1password-environment", provider = "project1", uuid = "dev-uuid" }
+dev = { type = "1password-environment", provider = "project1", uuid = "dev-uuid", cache = { ttl = "15m", identity = "personal" } }
 stage = { type = "1password-environment", provider = "project2", uuid = "stage-uuid" }
 
 [profiles]
@@ -65,6 +65,9 @@ proj2-prod = ["dev", "stage"]
 	}
 	if cfg.Environments["dev"].UUID != "dev-uuid" || cfg.Environments["stage"].UUID != "stage-uuid" {
 		t.Fatalf("environments not parsed: %#v", cfg.Environments)
+	}
+	if cfg.Environments["dev"].Cache == nil || cfg.Environments["dev"].Cache.TTL != "15m" || cfg.Environments["dev"].Cache.Identity != "personal" {
+		t.Fatalf("dev cache not parsed: %#v", cfg.Environments["dev"].Cache)
 	}
 	if !slices.Equal(cfg.Profiles["default"].Environments, []string{"dev"}) {
 		t.Fatalf("default profile = %#v", cfg.Profiles["default"].Environments)
@@ -300,6 +303,10 @@ project = { type = "1password", identity = "local", file = "project.1p.age", tok
 [environments]
 dev = { type = "1password-environment", provider = "project", uuid = "dev", token = "plain" }
 `,
+		"environment cache extra": `
+[environments]
+dev = { type = "1password-environment", provider = "project", uuid = "dev", cache = { ttl = "1h", identity = "local", token = "plain" } }
+`,
 	}
 
 	for name, data := range cases {
@@ -316,6 +323,54 @@ dev = { type = "1password-environment", provider = "project", uuid = "dev", toke
 				t.Fatalf("error = %q, want unsupported config key", err)
 			}
 		})
+	}
+}
+
+func TestLoadConfigValidatesEnvironmentCacheConfig(t *testing.T) {
+	dir := privateTempDir(t)
+	cases := map[string]string{
+		"missing ttl": `
+[environments]
+dev = { type = "1password-environment", provider = "project", uuid = "dev", cache = { identity = "local" } }
+`,
+		"missing identity": `
+[environments]
+dev = { type = "1password-environment", provider = "project", uuid = "dev", cache = { ttl = "1h" } }
+`,
+		"invalid ttl": `
+[environments]
+dev = { type = "1password-environment", provider = "project", uuid = "dev", cache = { ttl = "soon", identity = "local" } }
+`,
+	}
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".toml")
+			if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(path)
+			if err == nil {
+				t.Fatal("LoadConfig accepted invalid environment cache config")
+			}
+			if !strings.Contains(err.Error(), "cache") {
+				t.Fatalf("error = %q, want cache validation error", err)
+			}
+		})
+	}
+}
+
+func TestValidateReferencesRejectsUnknownEnvironmentCacheIdentity(t *testing.T) {
+	cfg := emptyConfig("/tmp/config.toml")
+	cfg.Identities["provider-id"] = IdentityConfig{Type: IdentityTypeBasic, File: "provider.identity"}
+	cfg.Providers["project"] = ProviderConfig{Type: ProviderType1Password, Identity: "provider-id", File: "project.1p.age"}
+	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project", UUID: "dev", Cache: &EnvironmentCacheConfig{TTL: "1h", Identity: "missing"}}
+
+	err := cfg.validateReferences()
+	if err == nil {
+		t.Fatal("validateReferences accepted an unknown cache identity")
+	}
+	if !strings.Contains(err.Error(), "cache references unknown identity") {
+		t.Fatalf("error = %q, want unknown cache identity", err)
 	}
 }
 
@@ -401,7 +456,7 @@ func TestConfigWriteRoundTripsThroughTomlEncoder(t *testing.T) {
 	cfg := emptyConfig(filepath.Join(dir, "config.toml"))
 	cfg.Identities["work1"] = IdentityConfig{Type: IdentityTypeBasic, File: "ids/work\x7f.identity"}
 	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "work1", File: "providers/project1.1p.age"}
-	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project1", UUID: "dev-uuid"}
+	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project1", UUID: "dev-uuid", Cache: &EnvironmentCacheConfig{TTL: "15m", Identity: "work1"}}
 	cfg.Profiles["default"] = ProfileConfig{Environments: []string{"dev"}}
 
 	if err := cfg.Write(); err != nil {
@@ -418,6 +473,9 @@ func TestConfigWriteRoundTripsThroughTomlEncoder(t *testing.T) {
 	if !strings.Contains(text, `\u007F`) {
 		t.Fatalf("written config did not TOML-escape DEL:\n%s", text)
 	}
+	if !strings.Contains(text, `cache = {`) || !strings.Contains(text, `ttl = '15m'`) || !strings.Contains(text, `identity = 'work1'`) {
+		t.Fatalf("written config did not include inline cache config:\n%s", text)
+	}
 
 	loaded, err := LoadConfig(cfg.Path)
 	if err != nil {
@@ -429,8 +487,12 @@ func TestConfigWriteRoundTripsThroughTomlEncoder(t *testing.T) {
 	if loaded.Providers["project1"] != cfg.Providers["project1"] {
 		t.Fatalf("provider round trip = %#v, want %#v", loaded.Providers["project1"], cfg.Providers["project1"])
 	}
-	if loaded.Environments["dev"] != cfg.Environments["dev"] {
-		t.Fatalf("environment round trip = %#v, want %#v", loaded.Environments["dev"], cfg.Environments["dev"])
+	loadedEnvironment := loaded.Environments["dev"]
+	if loadedEnvironment.Type != cfg.Environments["dev"].Type || loadedEnvironment.Provider != cfg.Environments["dev"].Provider || loadedEnvironment.UUID != cfg.Environments["dev"].UUID {
+		t.Fatalf("environment round trip = %#v, want %#v", loadedEnvironment, cfg.Environments["dev"])
+	}
+	if loadedEnvironment.Cache == nil || loadedEnvironment.Cache.TTL != "15m" || loadedEnvironment.Cache.Identity != "work1" {
+		t.Fatalf("environment cache round trip = %#v", loadedEnvironment.Cache)
 	}
 	if !slices.Equal(loaded.Profiles["default"].Environments, cfg.Profiles["default"].Environments) {
 		t.Fatalf("profile round trip = %#v, want %#v", loaded.Profiles["default"].Environments, cfg.Profiles["default"].Environments)

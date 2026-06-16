@@ -12,6 +12,7 @@ import (
 var version = "dev"
 
 func main() {
+	cage.CleanupExpiredEnvironmentCaches(os.Stderr)
 	cmd := cage.NewRootCommand(version)
 	if err := cmd.Execute(); err != nil {
 		var exitErr cage.ExitError

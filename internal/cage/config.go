@@ -54,9 +54,16 @@ type ProviderConfig struct {
 
 // EnvironmentConfig describes one loadable secret environment.
 type EnvironmentConfig struct {
-	Type     string `toml:"type"`
-	Provider string `toml:"provider"`
-	UUID     string `toml:"uuid"`
+	Type     string                  `toml:"type"`
+	Provider string                  `toml:"provider"`
+	UUID     string                  `toml:"uuid"`
+	Cache    *EnvironmentCacheConfig `toml:"cache,omitempty"`
+}
+
+// EnvironmentCacheConfig describes encrypted cache settings for one environment.
+type EnvironmentCacheConfig struct {
+	TTL      string `toml:"ttl"`
+	Identity string `toml:"identity"`
 }
 
 // ProfileConfig describes a flat list of environments.
@@ -333,6 +340,17 @@ func (c *Config) validateEnvironmentConfig(name string, environment EnvironmentC
 	if environment.UUID == "" {
 		return fmt.Errorf("%s uuid is required", entryName)
 	}
+	if environment.Cache != nil {
+		if environment.Cache.TTL == "" {
+			return fmt.Errorf("%s cache ttl is required", entryName)
+		}
+		if _, err := parseCacheTTL(environment.Cache.TTL); err != nil {
+			return fmt.Errorf("%s cache ttl: %w", entryName, err)
+		}
+		if environment.Cache.Identity == "" {
+			return fmt.Errorf("%s cache identity is required", entryName)
+		}
+	}
 	return nil
 }
 
@@ -345,6 +363,11 @@ func (c *Config) validateReferences() error {
 	for name, environment := range c.Environments {
 		if _, ok := c.Providers[environment.Provider]; !ok {
 			return fmt.Errorf("environments.%s references unknown provider %q", name, environment.Provider)
+		}
+		if environment.Cache != nil {
+			if _, ok := c.Identities[environment.Cache.Identity]; !ok {
+				return fmt.Errorf("environments.%s cache references unknown identity %q", name, environment.Cache.Identity)
+			}
 		}
 	}
 	for name, profile := range c.Profiles {

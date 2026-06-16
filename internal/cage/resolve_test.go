@@ -50,7 +50,7 @@ func TestResolveVariablesReusesProviderClient(t *testing.T) {
 		},
 	}
 
-	variables, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev", "stage"}})
+	variables, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev", "stage"}}, cacheModeUse)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestResolveVariablesZeroesProviderTokenAfterClientInitialization(t *testing
 		},
 	}
 
-	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}})
+	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}}, cacheModeUse)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestResolveVariablesZeroesProviderTokenAfterClientInitializationError(t *te
 		},
 	}
 
-	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}})
+	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}}, cacheModeUse)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -159,7 +159,7 @@ func TestResolveVariablesFetchesConcurrentlyAndMergesInSelectionOrder(t *testing
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	variables, err := app.resolveVariables(ctx, cfg, Selection{Environments: []string{"first", "second"}})
+	variables, err := app.resolveVariables(ctx, cfg, Selection{Environments: []string{"first", "second"}}, cacheModeUse)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,12 +184,22 @@ func TestResolveVariablesRejectsInvalidVariableName(t *testing.T) {
 		},
 	}
 
-	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}})
+	_, err := app.resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}}, cacheModeUse)
 	if err == nil {
 		t.Fatal("resolveVariables accepted an invalid variable name")
 	}
 	if !strings.Contains(err.Error(), "invalid variable name") || !strings.Contains(err.Error(), "contains =") {
 		t.Fatalf("error = %q, want invalid variable name containing =", err)
+	}
+}
+
+func TestCacheModeFromFlagsRejectsConflictingFlags(t *testing.T) {
+	_, err := cacheModeFromFlags(true, true)
+	if err == nil {
+		t.Fatal("cacheModeFromFlags accepted conflicting cache flags")
+	}
+	if !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("error = %q, want conflict", err)
 	}
 }
 

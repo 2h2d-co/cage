@@ -1,6 +1,6 @@
 # cage integration tests
 
-The integration suite exercises cage end to end without checking any secret material into the repository. It uses a local `integration-test` cage profile with a basic age identity and an encrypted 1Password service account provider.
+The integration suite exercises cage end to end without checking any secret material into the repository. It uses a local `integration-test` cage profile with a basic age identity and an encrypted 1Password service account provider. Cache integration tests copy that setup to a private temporary directory before mutating config, cache state, or provider files.
 
 ## Requirements
 
@@ -121,23 +121,16 @@ mise run integration:setup:yubikey-touch-pin --serial <serial>
 ## Run
 
 ```sh
-make integration-test
-# or
-mise run integration-test
+mise run integration:run:all
 # or
 go test -v -count=1 -tags=integration ./integration
 ```
 
-Run all configured profile tests without the local lifecycle/completion subtests:
-
-```sh
-mise run integration:run:all
-```
-
-Run one configured profile at a time:
+Run one configured profile or cache suite at a time:
 
 ```sh
 mise run integration:run:basic
+mise run integration:run:cache
 mise run integration:run:secure-enclave
 mise run integration:run:yubikey-touch
 mise run integration:run:yubikey-touch-pin

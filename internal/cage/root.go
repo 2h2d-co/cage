@@ -82,6 +82,10 @@ func (a *App) debugf(format string, args ...any) {
 	_, _ = fmt.Fprintf(a.errOut, "debug: "+format+"\n", args...)
 }
 
+func (a *App) warnf(format string, args ...any) {
+	_, _ = fmt.Fprintf(a.errOut, "cage: warning: %s\n", Redact(fmt.Sprintf(format, args...)))
+}
+
 func requireMacOS() error {
 	if runtime.GOOS != "darwin" {
 		return errors.New("cage currently supports macOS only")

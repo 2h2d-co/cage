@@ -16,7 +16,7 @@ Core constraints:
 - Encrypted 1Password provider files are named `NAME.1p.age` and written with mode `0600`.
 - 1Password access uses the 1Password Go SDK, not the `op` CLI.
 - Provider tokens must not be exposed to child processes; `OP_SERVICE_ACCOUNT_TOKEN` is stripped from `cage exec` children.
-- 1Password Environments are not cached on disk or across loads.
+- 1Password Environments are only cached when an environment has `cache = { ttl = "...", identity = "..." }`; on-disk caches must always be age-encrypted.
 
 ## Config schema reminders
 
@@ -28,9 +28,12 @@ Supported types only:
 
 Profiles are flat and reference only environments, not other profiles. There is no default profile.
 
+Environment cache config is a nested inline object on environment entries: `cache = { ttl = "15m", identity = "local" }`. `ttl` is a positive Go duration string, `identity` may reference any configured identity, and active cache expiry is capped by the current config TTL.
+
 Resolution rules for `get`/`exec`:
 
 - `--profiles` and `--environments` are comma-separated.
+- `--skip-cache` means no cache reads or writes; `--refresh-cache` means pull fresh and write configured caches.
 - Flags override `CAGE_PROFILES` and `CAGE_ENVIRONMENTS`.
 - Load profiles first in argument order.
 - Load explicit environments after profiles in argument order.
@@ -39,11 +42,14 @@ Resolution rules for `get`/`exec`:
 ## Important implementation details
 
 - CLI is built with Cobra in `internal/cage/root.go`.
-- `main.go` only wires the root command and redacted error output.
+- `main.go` runs encrypted cache cleanup, then wires the root command and redacted error output.
 - age support is in `internal/cage/age.go`.
   - Native identities use `filippo.io/age`.
   - Plugin identities use `filippo.io/age/plugin`.
 - 1Password Environment resolution is in `internal/cage/resolve.go`.
+- Encrypted Environment cache storage and cleanup are in `internal/cage/cache.go`.
+- Cache files live under `${XDG_CACHE_HOME:-$HOME/.cache}/cage/environments/`; cache state is `${XDG_STATE_HOME:-$HOME/.local/state}/cage/cage.db`.
+- Expired, inactive, unreadable, and replaced cache files should be removed with normal file deletion; do not add overwrite passes for APFS/SSD storage.
 - `cage exec` uses process replacement semantics via `golang.org/x/sys/unix.Exec`.
 - `gosec` G304 is handled by cleaning file paths before reads; avoid adding `#nosec`.
 - Plugin command execution intentionally avoids `exec.Command` to keep `gosec` clean.
@@ -55,7 +61,7 @@ Resolution rules for `get`/`exec`:
 - `cage identity yubikey create NAME` calls `age-plugin-yubikey` and updates `[identities]`.
 - `cage identity se create NAME` calls `age-plugin-se` and updates `[identities]`.
 - `cage provider 1p create NAME --identity IDENTITY` reads a token securely or from stdin, encrypts to only that identity, and updates `[providers]`.
-- `cage environment create NAME --provider PROVIDER --uuid UUID` creates a `1password-environment` entry and updates `[environments]`.
+- `cage environment create NAME --provider PROVIDER --uuid UUID` creates a `1password-environment` entry and updates `[environments]`; add `--cache-ttl DURATION --cache-identity IDENTITY` to enable encrypted caching.
 - `cage profile create NAME --environments ENV[,ENV...]` creates a flat profile and updates `[profiles]`.
 - Environment deletion is blocked while a profile references that environment.
 - `delete` removes cage config entries and local files after confirmation.

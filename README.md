@@ -83,7 +83,7 @@ project1 = { type = "1password", identity = "local", file = "project1.1p.age" }
 project2 = { type = "1password", identity = "work2", file = "project2.1p.age" }
 
 [environments]
-dev = { type = "1password-environment", provider = "project1", uuid = "00000000-0000-0000-0000-000000000000" }
+dev = { type = "1password-environment", provider = "project1", uuid = "00000000-0000-0000-0000-000000000000", cache = { ttl = "15m", identity = "local" } }
 stage = { type = "1password-environment", provider = "project2", uuid = "11111111-1111-1111-1111-111111111111" }
 
 [profiles]
@@ -98,6 +98,8 @@ Supported types:
 - environments: `1password-environment`
 
 Profiles can only reference environments. They cannot reference other profiles.
+
+Environment caches are optional. Add `cache = { ttl = "15m", identity = "local" }` to an environment to cache that Environment for a positive Go duration string encrypted to the named identity. Changing `ttl` caps already-written entries by the current config TTL. Cached Environment files are stored under `${XDG_CACHE_HOME:-$HOME/.cache}/cage/environments/`; cache state is tracked in `${XDG_STATE_HOME:-$HOME/.local/state}/cage/cage.db`.
 
 ## Identity management
 
@@ -147,6 +149,7 @@ Create, list, and delete 1Password Environment config entries:
 
 ```sh
 cage environment create dev --provider project1 --uuid 00000000-0000-0000-0000-000000000000
+cage environment create dev-cached --provider project1 --uuid 00000000-0000-0000-0000-000000000000 --cache-ttl 15m --cache-identity local
 cage environment list
 cage environment delete dev
 ```
@@ -171,6 +174,8 @@ Environment deletion is blocked while a profile still references that environmen
 - Last loaded environment variable wins.
 - There is no default profile; selecting no profile/environment is an error.
 
+If an environment has encrypted caching configured, `get` and `exec` use an active cache before pulling from 1Password. `--skip-cache` avoids both cache reads and writes. `--refresh-cache` pulls fresh values and updates configured caches. If a cache entry is unreadable, cage deletes it and pulls fresh values.
+
 ## Get
 
 Print one value:
@@ -193,6 +198,13 @@ Print JSON:
 cage get --profiles default --json '*'
 ```
 
+Bypass configured caches:
+
+```sh
+cage get --profiles default --skip-cache '*'
+cage get --profiles default --refresh-cache '*'
+```
+
 Missing variables print an error and exit with status `1`.
 
 ## Exec
@@ -201,6 +213,7 @@ Run a command with parent environment plus resolved cage variables:
 
 ```sh
 cage exec --profiles default -- npm run start
+cage exec --profiles default --refresh-cache -- npm run start
 ```
 
 On macOS, cage uses `exec` to replace itself with the child process. `OP_SERVICE_ACCOUNT_TOKEN` is removed from the child environment even if present in the parent environment or loaded environment.
@@ -210,7 +223,7 @@ On macOS, cage uses `exec` to replace itself with the child process. `OP_SERVICE
 An optional end-to-end integration suite lives in [`integration/`](integration/). It requires a local `integration-test` cage profile, identity, encrypted provider file, and 1Password Environments; no secret material is checked into this repository. The local setup can use the mise shell alias `cage:it`.
 
 ```sh
-make integration-test
+mise run integration:run:all
 ```
 
 See [`integration/README.md`](integration/README.md) for setup instructions.
@@ -231,8 +244,9 @@ A checked-in starter manpage is also available at `docs/man/cage.1`.
 ## Security/UX notes
 
 - Provider tokens are decrypted only in memory to initialize the 1Password SDK.
-- 1Password Environments are not cached in memory across environment loads and are never cached on disk.
-- Config directories, config files, identity files, and provider files must be owned by the current user and not accessible by group or others.
+- 1Password Environments are not cached in memory across environment loads. Optional on-disk Environment caches are always age-encrypted to the configured cache identity.
+- Expired, inactive, unreadable, and replaced cache files are removed with normal file deletion; cache secrecy relies on age encryption, not overwrite passes.
+- Config directories, config files, identity files, provider files, cache directories, cached Environment files, and the cache state database must be owned by the current user and not accessible by group or others.
 - Cage strips common credential, injection, and debug environment variables from age plugin subprocesses.
 - Errors are redacted for common secret-looking values before cage prints them.
 - Use `--verbose` for high-level diagnostics or `--debug` for extra details; secret values are not intentionally logged.

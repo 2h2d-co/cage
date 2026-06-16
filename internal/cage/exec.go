@@ -13,6 +13,8 @@ import (
 func (a *App) newExecCommand() *cobra.Command {
 	var profiles string
 	var environments string
+	var skipCache bool
+	var refreshCache bool
 
 	cmd := &cobra.Command{
 		Use:   "exec [flags] -- COMMAND [ARG...]",
@@ -35,7 +37,11 @@ func (a *App) newExecCommand() *cobra.Command {
 				return err
 			}
 			selection := selectionFromCommand(cmd, profiles, environments)
-			variables, err := a.resolveVariables(context.Background(), cfg, selection)
+			mode, err := cacheModeFromFlags(skipCache, refreshCache)
+			if err != nil {
+				return err
+			}
+			variables, err := a.resolveVariables(context.Background(), cfg, selection, mode)
 			if err != nil {
 				return err
 			}
@@ -53,6 +59,7 @@ func (a *App) newExecCommand() *cobra.Command {
 		},
 	}
 	addSelectionFlags(cmd, &profiles, &environments)
+	addCacheFlags(cmd, &skipCache, &refreshCache)
 	cmd.Flags().SetInterspersed(false)
 	return cmd
 }

@@ -6,6 +6,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-06-16
+
+### Added
+
+- Add optional age-encrypted 1Password Environment caching with per-environment TTL and cache identity settings.
+- Store encrypted Environment cache files under XDG cache data and track cache state in an XDG state `cage.db` SQLite database.
+- Add `--skip-cache` and `--refresh-cache` for `get` and `exec`.
+- Add ephemeral integration coverage for encrypted cache bootstrap, cache hits, mixed cached/uncached loads, skip-cache, refresh-cache, exec, repair, failure, and cleanup paths.
+
+### Security
+
+- Remove expired, inactive, unreadable, and replaced encrypted Environment cache files with normal file deletion.
+
 ## [0.0.3] - 2026-06-16
 
 ### Changed

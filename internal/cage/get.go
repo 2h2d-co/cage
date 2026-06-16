@@ -13,6 +13,8 @@ func (a *App) newGetCommand() *cobra.Command {
 	var profiles string
 	var environments string
 	var jsonOutput bool
+	var skipCache bool
+	var refreshCache bool
 
 	cmd := &cobra.Command{
 		Use:   "get [flags] ENV_VAR|*",
@@ -28,7 +30,11 @@ func (a *App) newGetCommand() *cobra.Command {
 				return err
 			}
 			selection := selectionFromCommand(cmd, profiles, environments)
-			variables, err := a.resolveVariables(context.Background(), cfg, selection)
+			mode, err := cacheModeFromFlags(skipCache, refreshCache)
+			if err != nil {
+				return err
+			}
+			variables, err := a.resolveVariables(context.Background(), cfg, selection, mode)
 			if err != nil {
 				return err
 			}
@@ -36,6 +42,7 @@ func (a *App) newGetCommand() *cobra.Command {
 		},
 	}
 	addSelectionFlags(cmd, &profiles, &environments)
+	addCacheFlags(cmd, &skipCache, &refreshCache)
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON object output")
 	cmd.Flags().SetInterspersed(false)
 	return cmd
