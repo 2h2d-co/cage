@@ -83,10 +83,20 @@ func (a *App) newBasicCreateCommand() *cobra.Command {
 				secret = identity.String()
 			}
 
-			data := []byte("# public key: " + recipient + "\n" + secret + "\n")
+			// The age API exposes generated secret identities as strings. Cage cannot
+			// explicitly zero those string copies, but it zeroes the owned byte buffer
+			// as soon as the identity file has been written.
+			data := make([]byte, 0, len("# public key: ")+len(recipient)+1+len(secret)+1)
+			data = append(data, "# public key: "...)
+			data = append(data, recipient...)
+			data = append(data, '\n')
+			data = append(data, secret...)
+			data = append(data, '\n')
+			defer zeroBytes(data)
 			if err := writeSecretFile(path, data); err != nil {
 				return err
 			}
+			zeroBytes(data)
 			cfg.Identities[name] = IdentityConfig{Type: IdentityTypeBasic, File: fileName}
 			if err := cfg.Write(); err != nil {
 				return err
@@ -198,9 +208,11 @@ func (a *App) newYubiKeyCreateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer zeroBytes(identity)
 			if err := writeSecretFile(path, identity); err != nil {
 				return err
 			}
+			zeroBytes(identity)
 			cfg.Identities[name] = IdentityConfig{Type: IdentityTypeYubiKey, File: fileName}
 			if err := cfg.Write(); err != nil {
 				return err
@@ -258,9 +270,11 @@ func (a *App) newSecureEnclaveCreateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer zeroBytes(identity)
 			if err := writeSecretFile(path, identity); err != nil {
 				return err
 			}
+			zeroBytes(identity)
 			cfg.Identities[name] = IdentityConfig{Type: IdentityTypeSecureEnclave, File: fileName}
 			if err := cfg.Write(); err != nil {
 				return err

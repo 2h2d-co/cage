@@ -37,6 +37,9 @@ func readAgeIdentities(path string) ([]age.Identity, error) {
 			continue
 		}
 
+		// filippo.io/age identity parsers and the plugin client API accept strings.
+		// Cage zeroes the source file buffer, but those parser-bound string copies
+		// cannot be explicitly cleared by Go code.
 		identity, err := parseAgeIdentity(string(line))
 		if err != nil {
 			return nil, fmt.Errorf("%s:%d: %w", path, lineNumber, err)
@@ -316,6 +319,8 @@ func requestPluginValue(name, prompt string, secret bool) (value string, err err
 			zeroBytes(data)
 			return "", err
 		}
+		// The age plugin UI callback interface returns strings. Cage clears the
+		// terminal byte buffer, but cannot explicitly clear the returned string.
 		value := string(data)
 		zeroBytes(data)
 		return value, nil

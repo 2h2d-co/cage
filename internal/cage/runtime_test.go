@@ -56,6 +56,21 @@ func TestRedactSecretLookingValues(t *testing.T) {
 	}
 }
 
+func TestRedactCredentialValuesThroughEndOfLine(t *testing.T) {
+	input := "request failed\nAuthorization: Bearer abc123 def456\nstatus: 401\napi_key = key with spaces"
+	redacted := Redact(input)
+	for _, leaked := range []string{"Bearer", "abc123", "def456", "key with spaces"} {
+		if strings.Contains(redacted, leaked) {
+			t.Fatalf("redacted output leaked %q: %s", leaked, redacted)
+		}
+	}
+	for _, preserved := range []string{"Authorization: <redacted>", "status: 401", "api_key = <redacted>"} {
+		if !strings.Contains(redacted, preserved) {
+			t.Fatalf("redacted output missing %q: %s", preserved, redacted)
+		}
+	}
+}
+
 func TestVerboseAndDebugDiagnosticsDiffer(t *testing.T) {
 	var out bytes.Buffer
 	app := &App{errOut: &out}
