@@ -23,6 +23,13 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 - Encrypt provider tokens without parsing private identity material when a public recipient is sufficient.
 - Remove a redundant post-rename chmod from atomic writes and sync temp files before rename.
 
+## [0.0.2] - 2026-06-15
+
+### Changed
+
+- Published the GitHub release with macOS Apple Silicon (`darwin_arm64`) artifacts and checksums.
+- No source changes from `0.0.1`; both tags point at the same commit.
+
 ## [0.0.1] - 2026-06-15
 
 ### Added
