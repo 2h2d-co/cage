@@ -6,12 +6,21 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-06-16
+
+### Changed
+
+- Improve terminal action-needed prompts for hardware-backed decrypt flows.
+- Clean up config parsing and environment handling.
+
 ### Security
 
-- Strip common credential, injection, and debug environment variables from age plugin subprocesses.
-- Reject identity and provider file paths that are absolute or escape the config directory.
+- Reduce provider token plaintext lifetime and harden redacted error zeroing.
+- Strip common credential, injection, and debug environment variables from child processes and age plugin subprocesses.
+- Reject identity and provider file paths that are absolute, escape the config directory, or resolve through symlinks.
 - Reject config directories, config files, identity files, and provider files not owned by the current user or accessible by group/others.
-- Reject unsupported nested TOML config keys and non-string scalar fields.
+- Reject unsupported nested TOML config keys, non-string scalar fields, and unsafe environment names.
+- Encrypt provider tokens without parsing private identity material when a public recipient is sufficient.
 - Remove a redundant post-rename chmod from atomic writes and sync temp files before rename.
 
 ## [0.0.1] - 2026-06-15

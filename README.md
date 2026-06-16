@@ -43,9 +43,9 @@ brew install age-plugin-yubikey age-plugin-se # if you use those identity types
 For macOS Apple Silicon with mise:
 
 ```sh
-mise use -g github:2h2d-co/cage@0.0.1
+mise use -g github:2h2d-co/cage@0.0.3
 # or in a project mise.toml:
-# "github:2h2d-co/cage" = "0.0.1"
+# "github:2h2d-co/cage" = "0.0.3"
 ```
 
 The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at the archive root, plus checksums and GitHub artifact attestations for mise's `github:` backend.
@@ -53,7 +53,7 @@ The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at 
 For Go users:
 
 ```sh
-go install github.com/2h2d-co/cage@v0.0.1
+go install github.com/2h2d-co/cage@v0.0.3
 ```
 
 For local development:
