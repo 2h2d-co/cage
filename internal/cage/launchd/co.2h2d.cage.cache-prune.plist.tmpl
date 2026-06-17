@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>{{ xml .Label }}</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>{{ xml .ExecutablePath }}</string>
+		<string>--config</string>
+		<string>{{ xml .ConfigPath }}</string>
+		<string>cache</string>
+		<string>prune</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>{{ range .EnvironmentVariables }}
+		<key>{{ xml .Name }}</key>
+		<string>{{ xml .Value }}</string>{{ end }}
+	</dict>
+	<key>StartInterval</key>
+	<integer>{{ .StartIntervalSeconds }}</integer>
+	<key>StandardOutPath</key>
+	<string>{{ xml .LogPath }}</string>
+	<key>StandardErrorPath</key>
+	<string>{{ xml .ErrorLogPath }}</string>
+</dict>
+</plist>

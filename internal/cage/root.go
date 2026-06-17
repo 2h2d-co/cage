@@ -21,6 +21,8 @@ type App struct {
 	errOut                     io.Writer
 	decryptProviderToken       providerTokenDecryptor
 	newOnePasswordEnvironments onePasswordEnvironmentsFactory
+	executablePath             executablePathFunc
+	runLaunchctl               launchctlRunner
 }
 
 // NewRootCommand builds the root cage command tree.
@@ -31,6 +33,8 @@ func NewRootCommand(version string) *cobra.Command {
 		errOut:                     os.Stderr,
 		decryptProviderToken:       decryptProviderToken,
 		newOnePasswordEnvironments: newOnePasswordEnvironments,
+		executablePath:             os.Executable,
+		runLaunchctl:               runLaunchctl,
 	}
 
 	root := &cobra.Command{

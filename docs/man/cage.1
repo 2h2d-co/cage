@@ -128,6 +128,22 @@ Remove expired, inactive, missing, and unreadable encrypted Environment cache en
 .B cage cache clear ENVIRONMENT|--all
 Clear encrypted Environment cache entries for one environment or all environments in the current config.
 .TP
+.B cage cache launchd install [--interval DURATION] [--overwrite]
+Install, enable, bootstrap, and kickstart a per-user launchd LaunchAgent that periodically runs
+.BR "cage cache prune" .
+The plist is written to
+.BR ~/Library/LaunchAgents/co.2h2d.cage.cache-prune.plist .
+Logs are written to
+.BR ~/Library/Logs/co.2h2d.cage.cache-prune.log
+and
+.BR ~/Library/Logs/co.2h2d.cage.cache-prune-error.log .
+Set
+.B CAGE_CACHE_PRUNE_LAUNCHD_LABEL
+for advanced parallel/testing setups that need a different launchd label and derived plist/log names.
+.TP
+.B cage cache launchd uninstall
+Disable, unload, and remove the periodic cache prune LaunchAgent.
+.TP
 .B cage get ENV_VAR
 Print a single resolved value. Missing variables exit with status 1.
 .TP

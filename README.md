@@ -20,7 +20,7 @@ Initial implementation:
 - encrypted 1Password service account providers as `NAME.1p.age`
 - 1Password Environment and profile config management
 - `cage get` and `cage exec`
-- encrypted environment cache inspection, pruning, and clearing
+- encrypted environment cache inspection, pruning, clearing, and launchd scheduling
 - shell completions and manpage generation
 
 No TUI or hierarchical config is implemented.
@@ -44,9 +44,9 @@ brew install age-plugin-yubikey age-plugin-se # if you use those identity types
 For macOS Apple Silicon with mise:
 
 ```sh
-mise use -g github:2h2d-co/cage@0.0.5
+mise use -g github:2h2d-co/cage@0.0.6
 # or in a project mise.toml:
-# "github:2h2d-co/cage" = "0.0.5"
+# "github:2h2d-co/cage" = "0.0.6"
 ```
 
 The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at the archive root, plus checksums and GitHub artifact attestations for mise's `github:` backend.
@@ -54,7 +54,7 @@ The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at 
 For Go users:
 
 ```sh
-go install github.com/2h2d-co/cage@v0.0.5
+go install github.com/2h2d-co/cage@v0.0.6
 ```
 
 For local development:
@@ -204,6 +204,21 @@ Clear encrypted cache data for one environment or for the current config:
 ```sh
 cage cache clear dev
 cage cache clear --all
+```
+
+Install a per-user macOS launchd LaunchAgent that periodically runs `cage cache prune` with the current executable path and config path:
+
+```sh
+cage cache launchd install
+cage cache launchd install --interval 30m --overwrite
+```
+
+The LaunchAgent plist is written to `~/Library/LaunchAgents/co.2h2d.cage.cache-prune.plist`. Logs are written to `~/Library/Logs/co.2h2d.cage.cache-prune.log` and `~/Library/Logs/co.2h2d.cage.cache-prune-error.log`. If `XDG_CACHE_HOME` or `XDG_STATE_HOME` is set during installation, those values are preserved in the LaunchAgent. For advanced parallel/testing setups, set `CAGE_CACHE_PRUNE_LAUNCHD_LABEL` to use a different launchd label and derived plist/log names.
+
+Uninstall the LaunchAgent:
+
+```sh
+cage cache launchd uninstall
 ```
 
 ## Get

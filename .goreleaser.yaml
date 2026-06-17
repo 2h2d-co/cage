@@ -28,6 +28,7 @@ archives:
       - LICENSE
       - examples/config.toml
       - docs/man/cage.1
+      - internal/cage/launchd/co.2h2d.cage.cache-prune.plist.tmpl
 
 checksum:
   name_template: checksums.txt

@@ -8,7 +8,11 @@ import (
 	"syscall"
 )
 
-func atomicWriteFile(path string, data []byte) (err error) {
+func atomicWriteFile(path string, data []byte) error {
+	return atomicWriteFileMode(path, data, 0o600)
+}
+
+func atomicWriteFileMode(path string, data []byte, mode os.FileMode) (err error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -24,7 +28,7 @@ func atomicWriteFile(path string, data []byte) (err error) {
 		}
 	}()
 
-	if err := tmp.Chmod(0o600); err != nil {
+	if err := tmp.Chmod(mode); err != nil {
 		return errors.Join(err, tmp.Close())
 	}
 	if _, err := tmp.Write(data); err != nil {

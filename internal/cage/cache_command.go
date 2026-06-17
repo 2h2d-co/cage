@@ -51,6 +51,7 @@ func (a *App) newCacheCommand() *cobra.Command {
 	cmd.AddCommand(a.newCacheStatusCommand())
 	cmd.AddCommand(a.newCachePruneCommand())
 	cmd.AddCommand(a.newCacheClearCommand())
+	cmd.AddCommand(a.newCacheLaunchdCommand())
 	return cmd
 }
 

@@ -162,6 +162,37 @@ func runEncryptedCacheIntegration(t *testing.T, bin string, configPath string) {
 		fixture.assertCacheRowCount(0)
 	})
 
+	t.Run("launchd periodically prunes expired cache", func(t *testing.T) {
+		fixture := newCacheIntegrationFixture(t, bin, configPath, "10s")
+		launchdLabel := "co.2h2d.cage.integration-cache-prune"
+		launchdHome := privateTempDir(t)
+		launchdEnv := append([]string{}, fixture.cacheEnv...)
+		launchdEnv = append(launchdEnv, "HOME="+launchdHome, "CAGE_CACHE_PRUNE_LAUNCHD_LABEL="+launchdLabel)
+		t.Cleanup(func() {
+			result, code := runCageRaw(t, fixture.bin, launchdEnv, "", "cache", "launchd", "uninstall")
+			if code != 0 {
+				t.Errorf("cleanup cache launchd uninstall exited %d\nstdout:\n%s\nstderr:\n%s", code, result.stdout, result.stderr)
+			}
+		})
+
+		result := runCage(t, fixture.bin, fixture.cacheEnv, "", "get", "--profiles", integrationProfile, "CAGE_INTEGRATION_HEALTH")
+		assertEqual(t, strings.TrimSpace(result.stdout), "ok")
+		fixture.singleCacheEntry()
+		assertFileMode(t, fixture.cachePath, 0o600)
+
+		runCage(t, fixture.bin, launchdEnv, "", "cache", "launchd", "install", "--interval", "5s")
+		plistPath := filepath.Join(launchdHome, "Library", "LaunchAgents", launchdLabel+".plist")
+		assertFileContains(t, plistPath, "<string>"+launchdLabel+"</string>")
+		assertFileContains(t, plistPath, "<key>XDG_CACHE_HOME</key>")
+		assertFileContains(t, plistPath, "<key>XDG_STATE_HOME</key>")
+		assertFileMode(t, fixture.cachePath, 0o600)
+
+		waitForFileMissing(t, fixture.cachePath, 45*time.Second)
+		fixture.assertCacheRowCount(0)
+		runCage(t, fixture.bin, launchdEnv, "", "cache", "launchd", "uninstall")
+		assertFileMissing(t, plistPath)
+	})
+
 	t.Run("environment cache setting commands require overwrite", func(t *testing.T) {
 		fixture := newCacheIntegrationFixture(t, bin, configPath, "1h")
 		failure, code := runCageFailure(t, fixture.bin, fixture.cacheEnv, "", "environment", "cache", "set", integrationEnvironment, "--ttl", "30m", "--identity", integrationCacheIdentity)
@@ -545,6 +576,22 @@ func findCacheStatus(t *testing.T, statuses []cacheCommandStatus, environment st
 	}
 	t.Fatalf("cache status for environment %s not found: %#v", environment, statuses)
 	return cacheCommandStatus{}
+}
+
+func waitForFileMissing(t *testing.T, path string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		_, err := os.Stat(filepath.Clean(path))
+		if os.IsNotExist(err) {
+			return
+		}
+		if err != nil {
+			t.Fatalf("stat %s while waiting for deletion: %v", path, err)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("%s still exists after %s", path, timeout)
 }
 
 func (f *cacheIntegrationFixture) execCacheDB(query string, args ...any) {

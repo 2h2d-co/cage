@@ -6,6 +6,12 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-06-17
+
+### Added
+
+- Add a shipped launchd plist template and `cage cache launchd install/uninstall` commands for periodic encrypted cache pruning on macOS.
+
 ## [0.0.5] - 2026-06-17
 
 ### Added

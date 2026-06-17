@@ -232,13 +232,20 @@ func runCageRaw(t *testing.T, bin string, extraEnv []string, stdin string, args 
 }
 
 func sanitizedEnv(extra []string) []string {
+	overrides := map[string]bool{}
+	for _, entry := range extra {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			overrides[key] = true
+		}
+	}
 	env := make([]string, 0, len(os.Environ())+len(extra))
 	for _, entry := range os.Environ() {
 		key, _, ok := strings.Cut(entry, "=")
 		if !ok {
 			continue
 		}
-		if key == "OP_SERVICE_ACCOUNT_TOKEN" || key == "CAGE_CONFIG" || key == "CAGE_PROFILES" || key == "CAGE_ENVIRONMENTS" {
+		if overrides[key] || key == "OP_SERVICE_ACCOUNT_TOKEN" || key == "CAGE_CONFIG" || key == "CAGE_PROFILES" || key == "CAGE_ENVIRONMENTS" {
 			continue
 		}
 		env = append(env, entry)

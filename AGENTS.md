@@ -47,8 +47,9 @@ Resolution rules for `get`/`exec`:
   - Native identities use `filippo.io/age`.
   - Plugin identities use `filippo.io/age/plugin`.
 - 1Password Environment resolution is in `internal/cage/resolve.go`.
-- Encrypted Environment cache storage and cleanup are in `internal/cage/cache.go`; cache management commands are in `internal/cage/cache_command.go`.
+- Encrypted Environment cache storage and cleanup are in `internal/cage/cache.go`; cache management commands are in `internal/cage/cache_command.go`; launchd prune scheduling commands are in `internal/cage/cache_launchd_command.go`.
 - Cache files live under `${XDG_CACHE_HOME:-$HOME/.cache}/cage/environments/`; cache state is `${XDG_STATE_HOME:-$HOME/.local/state}/cage/cage.db`.
+- Periodic cache pruning is managed by a per-user launchd LaunchAgent at `~/Library/LaunchAgents/co.2h2d.cage.cache-prune.plist`; logs are `~/Library/Logs/co.2h2d.cage.cache-prune.log` and `~/Library/Logs/co.2h2d.cage.cache-prune-error.log`.
 - Expired, inactive, unreadable, and replaced cache files should be removed with normal file deletion; do not add overwrite passes for APFS/SSD storage.
 - `cage exec` uses process replacement semantics via `golang.org/x/sys/unix.Exec`.
 - `gosec` G304 is handled by cleaning file paths before reads; avoid adding `#nosec`.
@@ -65,6 +66,7 @@ Resolution rules for `get`/`exec`:
 - `cage environment cache set NAME --ttl DURATION --identity IDENTITY` adds cache settings; pass `--overwrite` with both settings to replace existing cache settings.
 - `cage environment cache unset NAME` removes cache settings; use `cage cache clear NAME` to remove existing encrypted cache data.
 - `cage cache list/status/prune/clear` inspects and manages encrypted cache metadata/files without printing secret values.
+- `cage cache launchd install/uninstall` installs or removes the per-user periodic prune LaunchAgent. Install uses the current executable absolute path and active config absolute path. `CAGE_CACHE_PRUNE_LAUNCHD_LABEL` overrides the default launchd label for parallel/testing setups.
 - `cage profile create NAME --environments ENV[,ENV...]` creates a flat profile and updates `[profiles]`.
 - Environment deletion is blocked while a profile references that environment.
 - `delete` removes cage config entries and local files after confirmation.
