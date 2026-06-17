@@ -6,6 +6,14 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-06-17
+
+### Added
+
+- Add `cage cache list`, `cage cache status`, `cage cache prune`, and `cage cache clear` for encrypted Environment cache metadata and lifecycle management.
+- Add JSON output for cache list/status commands.
+- Add `cage environment cache set --overwrite` and `cage environment cache unset` for editing per-environment cache settings.
+
 ## [0.0.4] - 2026-06-16
 
 ### Added

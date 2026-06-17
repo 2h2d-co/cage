@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -215,6 +216,59 @@ func TestCleanupExpiredEnvironmentCachesDeletesFilesAndRows(t *testing.T) {
 	}
 }
 
+func TestCacheCommandsListStatusPruneAndClear(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("cage commands are macOS-only")
+	}
+
+	setCacheXDG(t)
+	cfg := cacheTestConfig(t)
+	if err := cfg.Write(); err != nil {
+		t.Fatal(err)
+	}
+	store := openCacheStoreForTest(t, true)
+	if err := store.saveEnvironment(cfg, "dev", []onepassword.EnvironmentVariable{{Name: "SECRET", Value: "cached"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	executeCage(t, cfg.Path, "cache", "list")
+	executeCage(t, cfg.Path, "cache", "list", "--json")
+	executeCage(t, cfg.Path, "cache", "status", "dev")
+	executeCage(t, cfg.Path, "cache", "status", "dev", "--json")
+	if got := cacheEntryCount(t); got != 1 {
+		t.Fatalf("cache rows after status commands = %d, want 1", got)
+	}
+
+	store = openCacheStoreForTest(t, false)
+	expiredFetchedAt := time.Now().Add(-2 * time.Hour).Unix()
+	expiredAt := time.Now().Add(-time.Hour).Unix()
+	if _, err := store.db.Exec(`UPDATE environment_cache_entries SET fetched_at_unix = ?, expires_at_unix = ?`, expiredFetchedAt, expiredAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.close(); err != nil {
+		t.Fatal(err)
+	}
+	executeCage(t, cfg.Path, "cache", "prune")
+	if got := cacheEntryCount(t); got != 0 {
+		t.Fatalf("cache rows after prune = %d, want 0", got)
+	}
+
+	store = openCacheStoreForTest(t, true)
+	if err := store.saveEnvironment(cfg, "dev", []onepassword.EnvironmentVariable{{Name: "SECRET", Value: "cached"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.close(); err != nil {
+		t.Fatal(err)
+	}
+	executeCage(t, cfg.Path, "cache", "clear", "dev", "--yes")
+	if got := cacheEntryCount(t); got != 0 {
+		t.Fatalf("cache rows after clear = %d, want 0", got)
+	}
+}
+
 func TestDefaultCacheAndStatePathsUseXDGWithHomeFallback(t *testing.T) {
 	dir := t.TempDir()
 	cacheHome := filepath.Join(dir, "cache")
@@ -336,6 +390,21 @@ func openCacheStoreForTest(t *testing.T, create bool) *environmentCacheStore {
 		t.Fatal("cache store is nil")
 	}
 	return store
+}
+
+func cacheEntryCount(t *testing.T) int {
+	t.Helper()
+	store := openCacheStoreForTest(t, false)
+	defer func() {
+		if err := store.close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	var rows int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM environment_cache_entries`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	return rows
 }
 
 func TestCacheDatabaseSchemaUserVersion(t *testing.T) {

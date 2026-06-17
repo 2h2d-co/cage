@@ -16,6 +16,7 @@ func (a *App) newEnvironmentCommand() *cobra.Command {
 		Long:    "Manage cage 1Password Environment config entries.",
 	}
 	cmd.AddCommand(a.newEnvironmentCreateCommand())
+	cmd.AddCommand(a.newEnvironmentCacheCommand())
 	cmd.AddCommand(a.newEnvironmentListCommand())
 	cmd.AddCommand(a.newEnvironmentDeleteCommand())
 	return cmd

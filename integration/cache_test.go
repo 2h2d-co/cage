@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -37,6 +38,15 @@ type cacheEntry struct {
 	identityRecipient string
 	fetchedAtUnix     int64
 	expiresAtUnix     int64
+}
+
+type cacheCommandStatus struct {
+	Environment     string `json:"environment"`
+	State           string `json:"state"`
+	Reason          string `json:"reason"`
+	CacheIdentity   string `json:"cache_identity"`
+	DBEntry         bool   `json:"db_entry"`
+	CacheFileExists bool   `json:"cache_file_exists"`
 }
 
 func runEncryptedCacheIntegration(t *testing.T, bin string, configPath string) {
@@ -104,6 +114,68 @@ func runEncryptedCacheIntegration(t *testing.T, bin string, configPath string) {
 		execEnv := "\n" + result.stdout
 		assertContains(t, execEnv, "\nCAGE_INTEGRATION_HEALTH=ok\n")
 		assertFileMissing(t, fixture.dbPath)
+	})
+
+	t.Run("cache management commands inspect prune and clear", func(t *testing.T) {
+		fixture := newCacheIntegrationFixture(t, bin, configPath, "1h")
+		result := runCage(t, fixture.bin, fixture.cacheEnv, "", "get", "--profiles", integrationProfile, "CAGE_INTEGRATION_HEALTH")
+		assertEqual(t, strings.TrimSpace(result.stdout), "ok")
+		fixture.singleCacheEntry()
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "list")
+		assertContains(t, result.stdout, integrationEnvironment)
+		assertContains(t, result.stdout, "state=active")
+		assertContains(t, result.stdout, "cache-identity="+integrationCacheIdentity)
+		assertNotContains(t, result.stdout, integrationEdgeValue)
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "list", "--json")
+		assertNotContains(t, result.stdout, integrationEdgeValue)
+		statuses := decodeCacheStatusList(t, result.stdout)
+		status := findCacheStatus(t, statuses, integrationEnvironment)
+		assertEqual(t, status.State, "active")
+		assertEqual(t, status.CacheIdentity, integrationCacheIdentity)
+		assertEqual(t, status.DBEntry, true)
+		assertEqual(t, status.CacheFileExists, true)
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "status", integrationEnvironment, "--json")
+		status = decodeCacheStatus(t, result.stdout)
+		assertEqual(t, status.Environment, integrationEnvironment)
+		assertEqual(t, status.State, "active")
+
+		fixture.expireCacheEntries()
+		runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "prune")
+		assertFileMissing(t, fixture.cachePath)
+		fixture.assertCacheRowCount(0)
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "get", "--profiles", integrationProfile, "CAGE_INTEGRATION_HEALTH")
+		assertEqual(t, strings.TrimSpace(result.stdout), "ok")
+		fixture.singleCacheEntry()
+		runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "clear", integrationEnvironment, "--yes")
+		assertFileMissing(t, fixture.cachePath)
+		fixture.assertCacheRowCount(0)
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "get", "--profiles", integrationProfile, "CAGE_INTEGRATION_HEALTH")
+		assertEqual(t, strings.TrimSpace(result.stdout), "ok")
+		fixture.singleCacheEntry()
+		runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "clear", "--all", "--yes")
+		assertFileMissing(t, fixture.cachePath)
+		fixture.assertCacheRowCount(0)
+	})
+
+	t.Run("environment cache setting commands require overwrite", func(t *testing.T) {
+		fixture := newCacheIntegrationFixture(t, bin, configPath, "1h")
+		failure, code := runCageFailure(t, fixture.bin, fixture.cacheEnv, "", "environment", "cache", "set", integrationEnvironment, "--ttl", "30m", "--identity", integrationCacheIdentity)
+		assertEqual(t, code, 1)
+		assertContains(t, failure.stderr, "use --overwrite to replace it")
+
+		runCage(t, fixture.bin, fixture.cacheEnv, "", "environment", "cache", "set", integrationEnvironment, "--ttl", "30m", "--identity", integrationCacheIdentity, "--overwrite")
+		assertFileContains(t, fixture.configPath, "cache = {ttl = '30m', identity = '"+integrationCacheIdentity+"'}")
+
+		runCage(t, fixture.bin, fixture.cacheEnv, "", "environment", "cache", "unset", integrationEnvironment)
+		assertFileContains(t, fixture.configPath, integrationEnvironment+" = {type = '1password-environment', provider = '"+fixture.provider+"', uuid = '"+fixture.uuid+"'}")
+
+		runCage(t, fixture.bin, fixture.cacheEnv, "", "environment", "cache", "set", integrationEnvironment, "--ttl", "45m", "--identity", integrationCacheIdentity)
+		assertFileContains(t, fixture.configPath, "cache = {ttl = '45m', identity = '"+integrationCacheIdentity+"'}")
 	})
 
 	t.Run("missing cache file repairs", func(t *testing.T) {
@@ -444,6 +516,35 @@ func assertCacheRowCount(t *testing.T, dbPath string, want int) {
 	if got != want {
 		t.Fatalf("cache row count = %d, want %d", got, want)
 	}
+}
+
+func decodeCacheStatusList(t *testing.T, data string) []cacheCommandStatus {
+	t.Helper()
+	var statuses []cacheCommandStatus
+	if err := json.Unmarshal([]byte(data), &statuses); err != nil {
+		t.Fatalf("parse cache status list JSON: %v\n%s", err, data)
+	}
+	return statuses
+}
+
+func decodeCacheStatus(t *testing.T, data string) cacheCommandStatus {
+	t.Helper()
+	var status cacheCommandStatus
+	if err := json.Unmarshal([]byte(data), &status); err != nil {
+		t.Fatalf("parse cache status JSON: %v\n%s", err, data)
+	}
+	return status
+}
+
+func findCacheStatus(t *testing.T, statuses []cacheCommandStatus, environment string) cacheCommandStatus {
+	t.Helper()
+	for _, status := range statuses {
+		if status.Environment == environment {
+			return status
+		}
+	}
+	t.Fatalf("cache status for environment %s not found: %#v", environment, statuses)
+	return cacheCommandStatus{}
 }
 
 func (f *cacheIntegrationFixture) execCacheDB(query string, args ...any) {

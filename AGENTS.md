@@ -47,7 +47,7 @@ Resolution rules for `get`/`exec`:
   - Native identities use `filippo.io/age`.
   - Plugin identities use `filippo.io/age/plugin`.
 - 1Password Environment resolution is in `internal/cage/resolve.go`.
-- Encrypted Environment cache storage and cleanup are in `internal/cage/cache.go`.
+- Encrypted Environment cache storage and cleanup are in `internal/cage/cache.go`; cache management commands are in `internal/cage/cache_command.go`.
 - Cache files live under `${XDG_CACHE_HOME:-$HOME/.cache}/cage/environments/`; cache state is `${XDG_STATE_HOME:-$HOME/.local/state}/cage/cage.db`.
 - Expired, inactive, unreadable, and replaced cache files should be removed with normal file deletion; do not add overwrite passes for APFS/SSD storage.
 - `cage exec` uses process replacement semantics via `golang.org/x/sys/unix.Exec`.
@@ -62,6 +62,9 @@ Resolution rules for `get`/`exec`:
 - `cage identity se create NAME` calls `age-plugin-se` and updates `[identities]`.
 - `cage provider 1p create NAME --identity IDENTITY` reads a token securely or from stdin, encrypts to only that identity, and updates `[providers]`.
 - `cage environment create NAME --provider PROVIDER --uuid UUID` creates a `1password-environment` entry and updates `[environments]`; add `--cache-ttl DURATION --cache-identity IDENTITY` to enable encrypted caching.
+- `cage environment cache set NAME --ttl DURATION --identity IDENTITY` adds cache settings; pass `--overwrite` with both settings to replace existing cache settings.
+- `cage environment cache unset NAME` removes cache settings; use `cage cache clear NAME` to remove existing encrypted cache data.
+- `cage cache list/status/prune/clear` inspects and manages encrypted cache metadata/files without printing secret values.
 - `cage profile create NAME --environments ENV[,ENV...]` creates a flat profile and updates `[profiles]`.
 - Environment deletion is blocked while a profile references that environment.
 - `delete` removes cage config entries and local files after confirmation.

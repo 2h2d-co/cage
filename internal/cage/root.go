@@ -49,6 +49,7 @@ func NewRootCommand(version string) *cobra.Command {
 
 	root.AddCommand(app.newGetCommand())
 	root.AddCommand(app.newExecCommand())
+	root.AddCommand(app.newCacheCommand())
 	root.AddCommand(app.newIdentityCommand())
 	root.AddCommand(app.newProviderCommand())
 	root.AddCommand(app.newEnvironmentCommand())

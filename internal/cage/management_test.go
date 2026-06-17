@@ -91,6 +91,61 @@ func TestEnvironmentCreateCommandConfiguresEncryptedCache(t *testing.T) {
 	}
 }
 
+func TestEnvironmentCacheSettingsCommandsManageConfig(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("cage commands are macOS-only")
+	}
+
+	path := filepath.Join(privateTempDir(t), "config.toml")
+	cfg := emptyConfig(path)
+	cfg.Identities["local"] = IdentityConfig{Type: IdentityTypeBasic, File: "local.identity"}
+	cfg.Identities["other"] = IdentityConfig{Type: IdentityTypeBasic, File: "other.identity"}
+	cfg.Providers["project1"] = ProviderConfig{Type: ProviderType1Password, Identity: "local", File: "project1.1p.age"}
+	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project1", UUID: "dev-uuid"}
+	if err := cfg.Write(); err != nil {
+		t.Fatal(err)
+	}
+
+	executeCage(t, path, "environment", "cache", "set", "dev", "--ttl", "15m", "--identity", "local")
+	loaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := loaded.Environments["dev"].Cache
+	if cache == nil || cache.TTL != "15m" || cache.Identity != "local" {
+		t.Fatalf("cache after set = %#v, want ttl 15m identity local", cache)
+	}
+
+	err = executeCageError(t, path, "environment", "cache", "set", "dev", "--ttl", "1h", "--identity", "other")
+	if err == nil || !strings.Contains(err.Error(), `use --overwrite to replace it`) {
+		t.Fatalf("overwrite-required error = %v", err)
+	}
+
+	executeCage(t, path, "environment", "cache", "set", "dev", "--ttl", "1h", "--identity", "other", "--overwrite")
+	loaded, err = LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache = loaded.Environments["dev"].Cache
+	if cache == nil || cache.TTL != "1h" || cache.Identity != "other" {
+		t.Fatalf("cache after overwrite = %#v, want ttl 1h identity other", cache)
+	}
+
+	executeCage(t, path, "environment", "cache", "unset", "dev")
+	loaded, err = LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cache = loaded.Environments["dev"].Cache; cache != nil {
+		t.Fatalf("cache after unset = %#v, want nil", cache)
+	}
+
+	err = executeCageError(t, path, "environment", "cache", "set", "dev", "--ttl", "15m")
+	if err == nil || !strings.Contains(err.Error(), "--identity is required") {
+		t.Fatalf("missing identity error = %v", err)
+	}
+}
+
 func TestEnvironmentAndProfileCommandsValidateReferences(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("cage commands are macOS-only")

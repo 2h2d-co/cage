@@ -11,8 +11,11 @@ cage \- minimal age-backed 1Password environment secret manager
 .B cage exec
 [--profiles LIST] [--environments LIST] [--skip-cache|--refresh-cache] -- COMMAND [ARG...]
 .PP
+.B cage cache
+list|status|prune|clear ...
+.PP
 .B cage environment
-create|list|delete ...
+create|cache|list|delete ...
 .PP
 .B cage profile
 create|list|delete ...
@@ -89,6 +92,15 @@ Create a 1Password Environment config entry. Add
 .B --cache-ttl DURATION --cache-identity IDENTITY
 to enable encrypted caching for that Environment.
 .TP
+.B cage environment cache set NAME --ttl DURATION --identity IDENTITY [--overwrite]
+Add encrypted cache settings for a configured Environment. Use
+.B --overwrite
+with both settings to replace existing cache settings.
+.TP
+.B cage environment cache unset NAME
+Remove encrypted cache settings from a configured Environment. Existing cache data can be removed with
+.BR "cage cache clear NAME" .
+.TP
 .B cage environment list
 List configured environments.
 .TP
@@ -103,6 +115,18 @@ List configured profiles.
 .TP
 .B cage profile delete NAME
 Delete a profile.
+.TP
+.B cage cache list [--json]
+List configured encrypted Environment caches and cache entries for the current config without printing secret values.
+.TP
+.B cage cache status [ENVIRONMENT] [--json]
+Show encrypted Environment cache metadata and usability status for one environment or all configured cache entries.
+.TP
+.B cage cache prune
+Remove expired, inactive, missing, and unreadable encrypted Environment cache entries for the current config.
+.TP
+.B cage cache clear ENVIRONMENT|--all
+Clear encrypted Environment cache entries for one environment or all environments in the current config.
 .TP
 .B cage get ENV_VAR
 Print a single resolved value. Missing variables exit with status 1.

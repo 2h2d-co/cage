@@ -325,17 +325,53 @@ func scanEnvironmentCacheEntry(scanner interface{ Scan(dest ...any) error }) (en
 	return entry, err
 }
 
-func (s *environmentCacheStore) lookupEnvironment(cfg *Config, environmentName string, now time.Time) (environmentCacheEntry, bool, bool, error) {
+func (s *environmentCacheStore) entriesForConfig(cfg *Config) ([]environmentCacheEntry, error) {
+	configPath := normalizedConfigPath(cfg.Path)
+	rows, err := s.db.Query(`SELECT cache_key, config_path, environment_name, provider_name, environment_uuid, identity_name, identity_recipient, cache_file, fetched_at_unix, expires_at_unix
+FROM environment_cache_entries
+WHERE config_path = ?
+ORDER BY environment_name`, configPath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var entries []environmentCacheEntry
+	for rows.Next() {
+		entry, err := scanEnvironmentCacheEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func (s *environmentCacheStore) entryForConfigEnvironment(cfg *Config, environmentName string) (environmentCacheEntry, bool, error) {
 	configPath := normalizedConfigPath(cfg.Path)
 	row := s.db.QueryRow(`SELECT cache_key, config_path, environment_name, provider_name, environment_uuid, identity_name, identity_recipient, cache_file, fetched_at_unix, expires_at_unix
 FROM environment_cache_entries
 WHERE config_path = ? AND environment_name = ?`, configPath, environmentName)
 	entry, err := scanEnvironmentCacheEntry(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return environmentCacheEntry{}, false, false, nil
+		return environmentCacheEntry{}, false, nil
 	}
 	if err != nil {
+		return environmentCacheEntry{}, false, err
+	}
+	return entry, true, nil
+}
+
+func (s *environmentCacheStore) lookupEnvironment(cfg *Config, environmentName string, now time.Time) (environmentCacheEntry, bool, bool, error) {
+	entry, found, err := s.entryForConfigEnvironment(cfg, environmentName)
+	if err != nil {
 		return environmentCacheEntry{}, false, false, err
+	}
+	if !found {
+		return environmentCacheEntry{}, false, false, nil
 	}
 	active, err := s.entryIsActive(cfg, environmentName, entry, now)
 	if err != nil {

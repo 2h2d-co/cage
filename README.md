@@ -20,9 +20,10 @@ Initial implementation:
 - encrypted 1Password service account providers as `NAME.1p.age`
 - 1Password Environment and profile config management
 - `cage get` and `cage exec`
+- encrypted environment cache inspection, pruning, and clearing
 - shell completions and manpage generation
 
-No TUI, hierarchical config, or environment caching is implemented.
+No TUI or hierarchical config is implemented.
 
 ## Requirements
 
@@ -43,9 +44,9 @@ brew install age-plugin-yubikey age-plugin-se # if you use those identity types
 For macOS Apple Silicon with mise:
 
 ```sh
-mise use -g github:2h2d-co/cage@0.0.3
+mise use -g github:2h2d-co/cage@0.0.5
 # or in a project mise.toml:
-# "github:2h2d-co/cage" = "0.0.3"
+# "github:2h2d-co/cage" = "0.0.5"
 ```
 
 The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at the archive root, plus checksums and GitHub artifact attestations for mise's `github:` backend.
@@ -53,7 +54,7 @@ The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at 
 For Go users:
 
 ```sh
-go install github.com/2h2d-co/cage@v0.0.3
+go install github.com/2h2d-co/cage@v0.0.5
 ```
 
 For local development:
@@ -150,6 +151,9 @@ Create, list, and delete 1Password Environment config entries:
 ```sh
 cage environment create dev --provider project1 --uuid 00000000-0000-0000-0000-000000000000
 cage environment create dev-cached --provider project1 --uuid 00000000-0000-0000-0000-000000000000 --cache-ttl 15m --cache-identity local
+cage environment cache set dev --ttl 15m --identity local
+cage environment cache set dev --ttl 1h --identity local --overwrite
+cage environment cache unset dev
 cage environment list
 cage environment delete dev
 ```
@@ -161,6 +165,8 @@ cage profile create default --environments dev,stage
 cage profile list
 cage profile delete default
 ```
+
+`environment cache set` adds cache settings and requires both `--ttl` and `--identity`. If an environment already has cache settings, pass `--overwrite` with both settings to replace them. `environment cache unset` removes cache settings from the config; use `cage cache clear NAME` to remove existing encrypted cache data.
 
 Environment deletion is blocked while a profile still references that environment. Recreate or delete the profile first.
 
@@ -175,6 +181,30 @@ Environment deletion is blocked while a profile still references that environmen
 - There is no default profile; selecting no profile/environment is an error.
 
 If an environment has encrypted caching configured, `get` and `exec` use an active cache before pulling from 1Password. `--skip-cache` avoids both cache reads and writes. `--refresh-cache` pulls fresh values and updates configured caches. If a cache entry is unreadable, cage deletes it and pulls fresh values.
+
+## Cache management
+
+Inspect encrypted Environment cache metadata without printing secret values:
+
+```sh
+cage cache list
+cage cache list --json
+cage cache status dev
+cage cache status dev --json
+```
+
+Remove cache entries that cannot currently be used because they are expired, inactive, missing, or unreadable:
+
+```sh
+cage cache prune
+```
+
+Clear encrypted cache data for one environment or for the current config:
+
+```sh
+cage cache clear dev
+cage cache clear --all
+```
 
 ## Get
 
