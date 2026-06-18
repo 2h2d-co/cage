@@ -31,7 +31,7 @@ func TestResolveVariablesWritesAndReadsEncryptedCache(t *testing.T) {
 		t.Fatalf("provider calls = %d, want 1", providerCalls)
 	}
 
-	cachePath := cacheTestEnvironmentFile(t, cfg, "dev")
+	cachePath := cacheTestEnvironmentFile(t, cfg)
 	ciphertext, err := os.ReadFile(filepath.Clean(cachePath))
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +126,7 @@ func TestResolveVariablesDeletesBadCacheAndFetchesFresh(t *testing.T) {
 	if _, err := cacheTestApp("old", &providerCalls).resolveVariables(context.Background(), cfg, Selection{Environments: []string{"dev"}}, cacheModeUse); err != nil {
 		t.Fatal(err)
 	}
-	cachePath := cacheTestEnvironmentFile(t, cfg, "dev")
+	cachePath := cacheTestEnvironmentFile(t, cfg)
 	if err := writeSecretFile(cachePath, []byte("not an age file")); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestCleanupExpiredEnvironmentCachesDeletesFilesAndRows(t *testing.T) {
 	if err := store.saveEnvironment(cfg, "dev", []onepassword.EnvironmentVariable{{Name: "SECRET", Value: "expired"}}, time.Now().Add(-10*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	cachePath := cacheTestEnvironmentFile(t, cfg, "dev")
+	cachePath := cacheTestEnvironmentFile(t, cfg)
 	if _, err := os.Stat(cachePath); err != nil {
 		t.Fatal(err)
 	}
@@ -327,6 +327,7 @@ func setCacheXDG(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+	t.Setenv("CAGE_TEST_CACHE_XDG", "1")
 }
 
 func cacheTestConfig(t *testing.T) *Config {
@@ -370,13 +371,13 @@ func cacheTestApp(value string, providerCalls *int) *App {
 	}
 }
 
-func cacheTestEnvironmentFile(t *testing.T, cfg *Config, environmentName string) string {
+func cacheTestEnvironmentFile(t *testing.T, cfg *Config) string {
 	t.Helper()
 	dir, err := DefaultEnvironmentCacheDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cacheKey := environmentCacheKey(normalizedConfigPath(cfg.Path), environmentName)
+	cacheKey := environmentCacheKey(normalizedConfigPath(cfg.Path), "dev")
 	return filepath.Join(dir, cacheKey+".age")
 }
 

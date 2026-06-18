@@ -25,6 +25,8 @@ type App struct {
 	runLaunchctl               launchctlRunner
 }
 
+const skipStartupCleanupAnnotation = "cage.skipStartupCleanup"
+
 // NewRootCommand builds the root cage command tree.
 func NewRootCommand(version string) *cobra.Command {
 	app := &App{
@@ -47,6 +49,12 @@ func NewRootCommand(version string) *cobra.Command {
 	}
 	root.SetOut(app.out)
 	root.SetErr(app.errOut)
+	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) {
+		if commandSkipsStartupCleanup(cmd) {
+			return
+		}
+		CleanupExpiredEnvironmentCaches(app.errOut)
+	}
 	root.PersistentFlags().StringVar(&app.configPath, "config", "", "config file path (overrides CAGE_CONFIG; default $XDG_CONFIG_HOME/cage/config.toml or ~/.config/cage/config.toml)")
 	root.PersistentFlags().BoolVarP(&app.verbose, "verbose", "v", false, "print diagnostics to stderr")
 	root.PersistentFlags().BoolVar(&app.debug, "debug", false, "print diagnostics plus extra debug details to stderr")
@@ -58,10 +66,27 @@ func NewRootCommand(version string) *cobra.Command {
 	root.AddCommand(app.newProviderCommand())
 	root.AddCommand(app.newEnvironmentCommand())
 	root.AddCommand(app.newProfileCommand())
+	root.AddCommand(app.newDoctorCommand())
 	root.AddCommand(newCompletionCommand(root))
 	root.AddCommand(app.newManCommand(root))
 
 	return root
+}
+
+func commandSkipsStartupCleanup(cmd *cobra.Command) bool {
+	for current := cmd; current != nil; current = current.Parent() {
+		if current.Annotations[skipStartupCleanupAnnotation] == "true" {
+			return true
+		}
+	}
+	return false
+}
+
+func markSkipsStartupCleanup(cmd *cobra.Command) {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[skipStartupCleanupAnnotation] = "true"
 }
 
 func (a *App) loadConfig() (*Config, error) {

@@ -21,6 +21,7 @@ Initial implementation:
 - 1Password Environment and profile config management
 - `cage get` and `cage exec`
 - encrypted environment cache inspection, pruning, clearing, and launchd scheduling
+- read-only `cage doctor` diagnostics for config, local files, and cache state
 - shell completions and manpage generation
 
 No TUI or hierarchical config is implemented.
@@ -44,9 +45,9 @@ brew install age-plugin-yubikey age-plugin-se # if you use those identity types
 For macOS Apple Silicon with mise:
 
 ```sh
-mise use -g github:2h2d-co/cage@0.0.6
+mise use -g github:2h2d-co/cage@0.0.7
 # or in a project mise.toml:
-# "github:2h2d-co/cage" = "0.0.6"
+# "github:2h2d-co/cage" = "0.0.7"
 ```
 
 The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at the archive root, plus checksums and GitHub artifact attestations for mise's `github:` backend.
@@ -54,7 +55,7 @@ The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at 
 For Go users:
 
 ```sh
-go install github.com/2h2d-co/cage@v0.0.6
+go install github.com/2h2d-co/cage@v0.0.7
 ```
 
 For local development:
@@ -220,6 +221,18 @@ Uninstall the LaunchAgent:
 ```sh
 cage cache launchd uninstall
 ```
+
+## Diagnostics
+
+Run read-only diagnostics for config parsing, references, file ownership/permissions, identity/provider metadata, and encrypted cache state:
+
+```sh
+cage doctor
+cage doctor --json
+cage doctor --strict
+```
+
+`doctor` does not decrypt provider tokens, decrypt cached Environment payloads, contact 1Password, prompt for hardware-backed identities, or prune cache files. It reports metadata only. By default warnings exit `0` and failures exit `1`; `--strict` exits non-zero when warnings are present.
 
 ## Get
 

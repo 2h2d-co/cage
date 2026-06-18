@@ -76,6 +76,10 @@ func TestEndToEnd(t *testing.T) {
 		assertFileNotContains(t, configPath, "integration-env")
 	})
 
+	reportedSubtest(t, report, "doctor diagnostics", "read-only metadata", func(t *testing.T) {
+		runDoctorIntegration(t, bin)
+	})
+
 	t.Run("configured 1Password profiles", func(t *testing.T) {
 		configPath := requireIntegrationConfig(t)
 		configEnv := []string{"CAGE_CONFIG=" + configPath}

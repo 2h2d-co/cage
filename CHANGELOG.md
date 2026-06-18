@@ -6,6 +6,12 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-06-18
+
+### Added
+
+- Add `cage doctor` read-only diagnostics for config parsing/references, local file permissions, identity/provider metadata, and encrypted cache state.
+
 ## [0.0.6] - 2026-06-17
 
 ### Added

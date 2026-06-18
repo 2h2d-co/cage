@@ -1,6 +1,7 @@
 package cage
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -179,6 +180,11 @@ func executeCage(t *testing.T, configPath string, args ...string) {
 
 func executeCageError(t *testing.T, configPath string, args ...string) error {
 	t.Helper()
+	if os.Getenv("CAGE_TEST_CACHE_XDG") != "1" {
+		dir := t.TempDir()
+		t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+		t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+	}
 	cmd := NewRootCommand("test")
 	cmd.SetArgs(append([]string{"--config", configPath}, args...))
 	return cmd.Execute()

@@ -22,6 +22,17 @@ const environmentCacheDBVersion = 1
 
 var errEnvironmentCacheStoreMissing = errors.New("environment cache store does not exist")
 
+type environmentCacheStoreVersionError struct {
+	version int
+}
+
+func (e environmentCacheStoreVersionError) Error() string {
+	if e.version > environmentCacheDBVersion {
+		return fmt.Sprintf("unsupported cache state database version %d", e.version)
+	}
+	return fmt.Sprintf("cache state database version %d is not initialized", e.version)
+}
+
 // DefaultCacheDir returns the global cage XDG cache directory.
 func DefaultCacheDir() (string, error) {
 	if xdgCacheHome := os.Getenv("XDG_CACHE_HOME"); xdgCacheHome != "" {
@@ -231,6 +242,64 @@ func sqliteDSN(path string) string {
 	query.Set("_busy_timeout", "5000")
 	u.RawQuery = query.Encode()
 	return u.String()
+}
+
+func sqliteReadOnlyDSN(path string) string {
+	u := url.URL{Scheme: "file", Path: filepath.Clean(path)}
+	query := u.Query()
+	query.Set("_busy_timeout", "5000")
+	query.Set("mode", "ro")
+	u.RawQuery = query.Encode()
+	return u.String()
+}
+
+func openEnvironmentCacheStoreReadOnly() (*environmentCacheStore, int, error) {
+	cacheDir, err := DefaultEnvironmentCacheDir()
+	if err != nil {
+		return nil, 0, err
+	}
+	dbPath, err := DefaultStateDBPath()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	exists, err := fileExists(dbPath)
+	if err != nil {
+		return nil, 0, fmt.Errorf("stat cache state database %s: %w", dbPath, err)
+	}
+	if !exists {
+		return nil, 0, errEnvironmentCacheStoreMissing
+	}
+	if err := ensurePrivateDirIfExists(filepath.Dir(cacheDir), "cache directory"); err != nil {
+		return nil, 0, err
+	}
+	if err := ensurePrivateDirIfExists(cacheDir, "environment cache directory"); err != nil {
+		return nil, 0, err
+	}
+	if err := ensurePrivateDirIfExists(filepath.Dir(dbPath), "state directory"); err != nil {
+		return nil, 0, err
+	}
+	if err := ensurePrivateFile(dbPath, "cache state database"); err != nil {
+		return nil, 0, err
+	}
+
+	db, err := sql.Open("sqlite3", sqliteReadOnlyDSN(dbPath))
+	if err != nil {
+		return nil, 0, fmt.Errorf("open cache state database %s read-only: %w", dbPath, err)
+	}
+	db.SetMaxOpenConns(1)
+	if err := db.Ping(); err != nil {
+		return nil, 0, errors.Join(fmt.Errorf("open cache state database %s read-only: %w", dbPath, err), db.Close())
+	}
+
+	var version int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return nil, 0, errors.Join(fmt.Errorf("read cache state database version %s: %w", dbPath, err), db.Close())
+	}
+	if version != environmentCacheDBVersion {
+		return nil, version, errors.Join(environmentCacheStoreVersionError{version: version}, db.Close())
+	}
+	return &environmentCacheStore{db: db, cacheDir: cacheDir}, version, nil
 }
 
 func migrateEnvironmentCacheDB(db *sql.DB) error {

@@ -14,6 +14,9 @@ cage \- minimal age-backed 1Password environment secret manager
 .B cage cache
 list|status|prune|clear ...
 .PP
+.B cage doctor
+[--json] [--strict]
+.PP
 .B cage environment
 create|cache|list|delete ...
 .PP
@@ -143,6 +146,11 @@ for advanced parallel/testing setups that need a different launchd label and der
 .TP
 .B cage cache launchd uninstall
 Disable, unload, and remove the periodic cache prune LaunchAgent.
+.TP
+.B cage doctor [--json] [--strict]
+Run read-only diagnostics for config parsing, references, local file ownership and permissions, identity/provider metadata, and encrypted cache state. It does not decrypt provider tokens, decrypt cached Environment payloads, contact 1Password, prompt for hardware-backed identities, or prune cache files. Warnings exit 0 by default; failures exit 1. Use
+.B --strict
+to exit non-zero when warnings are present.
 .TP
 .B cage get ENV_VAR
 Print a single resolved value. Missing variables exit with status 1.

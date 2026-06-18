@@ -94,18 +94,7 @@ func DefaultConfigPath() (string, error) {
 
 // LoadConfig loads and validates a cage config file.
 func LoadConfig(path string) (*Config, error) {
-	if path == "" {
-		path = os.Getenv("CAGE_CONFIG")
-	}
-	if path == "" {
-		defaultPath, err := DefaultConfigPath()
-		if err != nil {
-			return nil, err
-		}
-		path = defaultPath
-	}
-
-	expanded, err := expandPath(path)
+	expanded, err := resolveConfigPath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +126,20 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config %s: %w", expanded, err)
 	}
 	return cfg, nil
+}
+
+func resolveConfigPath(path string) (string, error) {
+	if path == "" {
+		path = os.Getenv("CAGE_CONFIG")
+	}
+	if path == "" {
+		defaultPath, err := DefaultConfigPath()
+		if err != nil {
+			return "", err
+		}
+		path = defaultPath
+	}
+	return expandPath(path)
 }
 
 func emptyConfig(path string) *Config {

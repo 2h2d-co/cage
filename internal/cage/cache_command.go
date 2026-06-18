@@ -88,6 +88,7 @@ func (a *App) newCacheListCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON output")
+	markSkipsStartupCleanup(cmd)
 	return cmd
 }
 
@@ -131,6 +132,7 @@ func (a *App) newCacheStatusCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON output")
+	markSkipsStartupCleanup(cmd)
 	return cmd
 }
 

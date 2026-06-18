@@ -42,12 +42,12 @@ Resolution rules for `get`/`exec`:
 ## Important implementation details
 
 - CLI is built with Cobra in `internal/cage/root.go`.
-- `main.go` runs encrypted cache cleanup, then wires the root command and redacted error output.
+- `main.go` wires the root command and redacted error output. Startup encrypted cache cleanup is triggered from the root Cobra persistent pre-run and skipped for read-only diagnostics/status commands.
 - age support is in `internal/cage/age.go`.
   - Native identities use `filippo.io/age`.
   - Plugin identities use `filippo.io/age/plugin`.
 - 1Password Environment resolution is in `internal/cage/resolve.go`.
-- Encrypted Environment cache storage and cleanup are in `internal/cage/cache.go`; cache management commands are in `internal/cage/cache_command.go`; launchd prune scheduling commands are in `internal/cage/cache_launchd_command.go`.
+- Encrypted Environment cache storage and cleanup are in `internal/cage/cache.go`; cache management commands are in `internal/cage/cache_command.go`; launchd prune scheduling commands are in `internal/cage/cache_launchd_command.go`; read-only diagnostics are in `internal/cage/doctor_command.go`.
 - Cache files live under `${XDG_CACHE_HOME:-$HOME/.cache}/cage/environments/`; cache state is `${XDG_STATE_HOME:-$HOME/.local/state}/cage/cage.db`.
 - Periodic cache pruning is managed by a per-user launchd LaunchAgent at `~/Library/LaunchAgents/co.2h2d.cage.cache-prune.plist`; logs are `~/Library/Logs/co.2h2d.cage.cache-prune.log` and `~/Library/Logs/co.2h2d.cage.cache-prune-error.log`.
 - Expired, inactive, unreadable, and replaced cache files should be removed with normal file deletion; do not add overwrite passes for APFS/SSD storage.
@@ -67,6 +67,7 @@ Resolution rules for `get`/`exec`:
 - `cage environment cache unset NAME` removes cache settings; use `cage cache clear NAME` to remove existing encrypted cache data.
 - `cage cache list/status/prune/clear` inspects and manages encrypted cache metadata/files without printing secret values.
 - `cage cache launchd install/uninstall` installs or removes the per-user periodic prune LaunchAgent. Install uses the current executable absolute path and active config absolute path. `CAGE_CACHE_PRUNE_LAUNCHD_LABEL` overrides the default launchd label for parallel/testing setups.
+- `cage doctor` is read-only and metadata-only: it must not decrypt provider tokens, decrypt cached Environment payloads, contact 1Password, prompt hardware-backed identities, or prune cache files.
 - `cage profile create NAME --environments ENV[,ENV...]` creates a flat profile and updates `[profiles]`.
 - Environment deletion is blocked while a profile references that environment.
 - `delete` removes cage config entries and local files after confirmation.

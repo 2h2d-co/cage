@@ -162,6 +162,40 @@ func runEncryptedCacheIntegration(t *testing.T, bin string, configPath string) {
 		fixture.assertCacheRowCount(0)
 	})
 
+	t.Run("doctor and read-only cache commands do not prune expired cache", func(t *testing.T) {
+		fixture := newCacheIntegrationFixture(t, bin, configPath, "1h")
+		result := runCage(t, fixture.bin, fixture.cacheEnv, "", "get", "--profiles", integrationProfile, "CAGE_INTEGRATION_HEALTH")
+		assertEqual(t, strings.TrimSpace(result.stdout), "ok")
+		fixture.singleCacheEntry()
+		fixture.expireCacheEntries()
+		assertFileMode(t, fixture.cachePath, 0o600)
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "doctor", "--json")
+		assertNotContains(t, result.stdout, integrationEdgeValue)
+		report := decodeDoctorReport(t, result.stdout)
+		assertEqual(t, report.Status, "warn")
+		check := assertDoctorIntegrationCheck(t, report, "warn", "cache.environment."+integrationEnvironment)
+		assertContains(t, check.Message, "state=expired")
+		assertFileMode(t, fixture.cachePath, 0o600)
+		fixture.assertCacheRowCount(1)
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "list", "--json")
+		status := findCacheStatus(t, decodeCacheStatusList(t, result.stdout), integrationEnvironment)
+		assertEqual(t, status.State, "expired")
+		assertFileMode(t, fixture.cachePath, 0o600)
+		fixture.assertCacheRowCount(1)
+
+		result = runCage(t, fixture.bin, fixture.cacheEnv, "", "cache", "status", integrationEnvironment, "--json")
+		status = decodeCacheStatus(t, result.stdout)
+		assertEqual(t, status.State, "expired")
+		assertFileMode(t, fixture.cachePath, 0o600)
+		fixture.assertCacheRowCount(1)
+
+		runCage(t, fixture.bin, fixture.cacheEnv, "", "completion", "bash")
+		assertFileMissing(t, fixture.cachePath)
+		fixture.assertCacheRowCount(0)
+	})
+
 	t.Run("launchd periodically prunes expired cache", func(t *testing.T) {
 		fixture := newCacheIntegrationFixture(t, bin, configPath, "10s")
 		launchdLabel := "co.2h2d.cage.integration-cache-prune"
