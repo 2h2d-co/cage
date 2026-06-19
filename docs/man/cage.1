@@ -17,8 +17,14 @@ list|status|prune|clear ...
 .B cage doctor
 [--json] [--strict]
 .PP
+.B cage identity
+list|basic|yubikey|se ...
+.PP
+.B cage provider
+list|1p ...
+.PP
 .B cage environment
-create|cache|list|delete ...
+create|cache|list|inspect|delete ...
 .PP
 .B cage profile
 create|list|delete ...
@@ -70,6 +76,9 @@ to avoid cache reads and writes, or
 to pull fresh values and update configured caches.
 .SH COMMANDS
 .TP
+.B cage identity list
+List all configured identities without prompting hardware-backed identities or printing secret key material.
+.TP
 .B cage identity basic create NAME
 Create a native age identity, write
 .BR NAME.identity
@@ -84,6 +93,9 @@ with mode 0600, and update config.
 Create a Secure Enclave identity, write
 .BR NAME.identity
 with mode 0600, and update config.
+.TP
+.B cage provider list
+List configured providers, referenced identities, and provider file status without decrypting provider tokens.
 .TP
 .B cage provider 1p create NAME --identity IDENTITY
 Read a 1Password service account token securely or from stdin, encrypt it to one identity, write
@@ -105,7 +117,10 @@ Remove encrypted cache settings from a configured Environment. Existing cache da
 .BR "cage cache clear NAME" .
 .TP
 .B cage environment list
-List configured environments.
+List configured environments with non-secret provider, cache, and status metadata.
+.TP
+.B cage environment inspect NAME
+Show non-secret metadata and wiring for one configured Environment.
 .TP
 .B cage environment delete NAME
 Delete an environment config entry if no profile references it.
@@ -114,7 +129,7 @@ Delete an environment config entry if no profile references it.
 Create a flat profile from configured environments.
 .TP
 .B cage profile list
-List configured profiles.
+List configured profiles and missing environment references without resolving secret values.
 .TP
 .B cage profile delete NAME
 Delete a profile.

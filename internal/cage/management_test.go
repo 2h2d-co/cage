@@ -1,12 +1,16 @@
 package cage
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	"filippo.io/age"
+	"github.com/spf13/cobra"
 )
 
 func TestEnvironmentAndProfileCommandsManageConfig(t *testing.T) {
@@ -168,6 +172,99 @@ func TestEnvironmentAndProfileCommandsValidateReferences(t *testing.T) {
 	err = executeCageError(t, path, "profile", "create", "bad", "--environments", "missing")
 	if err == nil || !strings.Contains(err.Error(), `unknown environment "missing"`) {
 		t.Fatalf("unknown environment error = %v", err)
+	}
+}
+
+func TestManagementListAndInspectCommandsReportMetadata(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("cage commands are macOS-only")
+	}
+
+	path := filepath.Join(privateTempDir(t), "config.toml")
+	cfg := emptyConfig(path)
+	cfg.Identities["local"] = IdentityConfig{Type: IdentityTypeBasic, File: "local.identity"}
+	cfg.Identities["work"] = IdentityConfig{Type: IdentityTypeYubiKey, File: "work.identity"}
+	cfg.Providers["broken"] = ProviderConfig{Type: ProviderType1Password, Identity: "missing", File: "broken.1p.age"}
+	cfg.Providers["project"] = ProviderConfig{Type: ProviderType1Password, Identity: "local", File: "project.1p.age"}
+	cfg.Environments["broken"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "missing-provider", UUID: "broken-uuid"}
+	cfg.Environments["dev"] = EnvironmentConfig{Type: EnvironmentType1Password, Provider: "project", UUID: "dev-uuid", Cache: &EnvironmentCacheConfig{TTL: "15m", Identity: "local"}}
+	cfg.Profiles["default"] = ProfileConfig{Environments: []string{"dev", "missing-env"}}
+	if err := cfg.Write(); err != nil {
+		t.Fatal(err)
+	}
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityData := []byte("# public key: " + identity.Recipient().String() + "\n" + identity.String() + "\n")
+	if err := writeSecretFile(cfg.ResolveFile("local.identity"), identityData); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSecretFile(cfg.ResolveFile("project.1p.age"), []byte(ageCiphertextHeader+"\nbody\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSecretFile(cfg.ResolveFile("broken.1p.age"), []byte("not age\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	identityOut := executeAppCommand(t, path, (*App).newIdentityCommand, "list")
+	assertOutputContains(t, identityOut, "Configured identities:")
+	assertOutputContains(t, identityOut, "local\ttype=basic\tfile=local.identity\tfile-status=present\trecipient="+identity.Recipient().String()+"\tstatus=ok")
+	assertOutputContains(t, identityOut, "work\ttype=yubikey\tfile=work.identity\tfile-status=missing\trecipient=-\tstatus=missing-file")
+
+	providerOut := executeAppCommand(t, path, (*App).newProviderCommand, "list")
+	assertOutputContains(t, providerOut, "project\ttype=1password\tidentity=local\tidentity-status=present\tfile=project.1p.age\tfile-status=age-ciphertext\tstatus=ok")
+	assertOutputContains(t, providerOut, "broken\ttype=1password\tidentity=missing\tidentity-status=missing\tfile=broken.1p.age\tfile-status=invalid-ciphertext\tstatus=missing-reference")
+
+	environmentOut := executeAppCommand(t, path, (*App).newEnvironmentCommand, "list")
+	assertOutputContains(t, environmentOut, "dev\ttype=1password-environment\tprovider=project\tprovider-status=present\tuuid=dev-uuid\tcache=enabled\tcache-ttl=15m\tcache-identity=local\tcache-identity-status=present\tstatus=ok")
+	assertOutputContains(t, environmentOut, "broken\ttype=1password-environment\tprovider=missing-provider\tprovider-status=missing\tuuid=broken-uuid\tcache=disabled\tcache-ttl=-\tcache-identity=-\tcache-identity-status=-\tstatus=missing-reference")
+
+	inspectOut := executeAppCommand(t, path, (*App).newEnvironmentCommand, "inspect", "dev")
+	assertOutputContains(t, inspectOut, "Environment dev:")
+	assertOutputContains(t, inspectOut, "provider-file-status=age-ciphertext")
+	assertOutputContains(t, inspectOut, "referenced-by-profiles=default")
+	assertOutputContains(t, inspectOut, "status=ok")
+
+	profileOut := executeAppCommand(t, path, (*App).newProfileCommand, "list")
+	assertOutputContains(t, profileOut, "default\tenvironments=dev,missing-env\tmissing-environments=missing-env\tstatus=missing-reference")
+}
+
+func TestManagementInspectionCommandsSkipStartupCleanup(t *testing.T) {
+	app := &App{}
+	commands := map[string]*cobra.Command{
+		"identity list":         app.newIdentityListCommand(),
+		"identity basic list":   app.newBasicListCommand(),
+		"identity yubikey list": app.newYubiKeyListCommand(),
+		"identity se list":      app.newSecureEnclaveListCommand(),
+		"provider list":         app.newProviderListCommand(),
+		"environment list":      app.newEnvironmentListCommand(),
+		"environment inspect":   app.newEnvironmentInspectCommand(),
+		"profile list":          app.newProfileListCommand(),
+	}
+	for name, cmd := range commands {
+		if !commandSkipsStartupCleanup(cmd) {
+			t.Fatalf("%s should skip startup cleanup", name)
+		}
+	}
+}
+
+func executeAppCommand(t *testing.T, configPath string, newCommand func(*App) *cobra.Command, args ...string) string {
+	t.Helper()
+	var out bytes.Buffer
+	app := &App{configPath: configPath, out: &out, errOut: &bytes.Buffer{}}
+	cmd := newCommand(app)
+	cmd.SetArgs(args)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("command %s: %v", strings.Join(args, " "), err)
+	}
+	return out.String()
+}
+
+func assertOutputContains(t *testing.T, output string, want string) {
+	t.Helper()
+	if !strings.Contains(output, want) {
+		t.Fatalf("output missing %q:\n%s", want, output)
 	}
 }
 

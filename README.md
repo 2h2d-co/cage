@@ -18,6 +18,7 @@ Initial implementation:
 - age-plugin-yubikey identity creation/listing/deletion from cage config
 - age-plugin-se identity creation/listing/deletion from cage config
 - encrypted 1Password service account providers as `NAME.1p.age`
+- non-secret identity, provider, Environment, and profile listing/inspection
 - 1Password Environment and profile config management
 - `cage get` and `cage exec`
 - encrypted environment cache inspection, pruning, clearing, and launchd scheduling
@@ -45,9 +46,9 @@ brew install age-plugin-yubikey age-plugin-se # if you use those identity types
 For macOS Apple Silicon with mise:
 
 ```sh
-mise use -g github:2h2d-co/cage@0.0.7
+mise use -g github:2h2d-co/cage@0.0.8
 # or in a project mise.toml:
-# "github:2h2d-co/cage" = "0.0.7"
+# "github:2h2d-co/cage" = "0.0.8"
 ```
 
 The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at the archive root, plus checksums and GitHub artifact attestations for mise's `github:` backend.
@@ -55,7 +56,7 @@ The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at 
 For Go users:
 
 ```sh
-go install github.com/2h2d-co/cage@v0.0.7
+go install github.com/2h2d-co/cage@v0.0.8
 ```
 
 For local development:
@@ -108,6 +109,7 @@ Environment caches are optional. Add `cache = { ttl = "15m", identity = "local" 
 Created identity names must use only letters, numbers, `_`, and `-`. Created files are always named `NAME.identity` and written with mode `0600`.
 
 ```sh
+cage identity list
 cage identity basic create local
 cage identity basic create local-pq --pq
 cage identity basic list
@@ -131,9 +133,10 @@ Secure Enclave options include `--access-control`, `--recipient-type`, and `--pq
 
 ## 1Password providers
 
-Create an encrypted 1Password service account provider:
+Create and inspect encrypted 1Password service account providers:
 
 ```sh
+cage provider list
 cage provider 1p create project1 --identity local
 ```
 
@@ -143,11 +146,11 @@ If stdin is not a terminal, cage reads the token from stdin. You can also force 
 printf '%s' "$OP_SERVICE_ACCOUNT_TOKEN" | cage provider 1p create project1 --identity local --stdin
 ```
 
-The plaintext token is encrypted only to the configured identity and stored as `project1.1p.age` with mode `0600`. cage does not expose provider tokens to child processes.
+The plaintext token is encrypted only to the configured identity and stored as `project1.1p.age` with mode `0600`. `cage provider list` shows metadata such as referenced identities and provider file status without decrypting tokens. cage does not expose provider tokens to child processes.
 
 ## Environment and profile management
 
-Create, list, and delete 1Password Environment config entries:
+Create, list, inspect, and delete 1Password Environment config entries:
 
 ```sh
 cage environment create dev --provider project1 --uuid 00000000-0000-0000-0000-000000000000
@@ -156,6 +159,7 @@ cage environment cache set dev --ttl 15m --identity local
 cage environment cache set dev --ttl 1h --identity local --overwrite
 cage environment cache unset dev
 cage environment list
+cage environment inspect dev
 cage environment delete dev
 ```
 
@@ -169,7 +173,7 @@ cage profile delete default
 
 `environment cache set` adds cache settings and requires both `--ttl` and `--identity`. If an environment already has cache settings, pass `--overwrite` with both settings to replace them. `environment cache unset` removes cache settings from the config; use `cage cache clear NAME` to remove existing encrypted cache data.
 
-Environment deletion is blocked while a profile still references that environment. Recreate or delete the profile first.
+`list` and `inspect` management commands show metadata and wiring only, never resolved secret values. Environment deletion is blocked while a profile still references that environment. Recreate or delete the profile first.
 
 ## Resolution rules
 

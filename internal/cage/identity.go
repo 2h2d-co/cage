@@ -20,9 +20,31 @@ func (a *App) newIdentityCommand() *cobra.Command {
 		Short: "Manage age identities",
 		Long:  "Manage cage-tracked age identities backed by native age keys, age-plugin-yubikey, and age-plugin-se.",
 	}
+	cmd.AddCommand(a.newIdentityListCommand())
 	cmd.AddCommand(a.newBasicIdentityCommand())
 	cmd.AddCommand(a.newYubiKeyIdentityCommand())
 	cmd.AddCommand(a.newSecureEnclaveIdentityCommand())
+	return cmd
+}
+
+func (a *App) newIdentityListCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List configured identities",
+		Long:  "List all cage-configured age identities without prompting hardware-backed identities or printing secret key material.",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := requireMacOS(); err != nil {
+				return err
+			}
+			cfg, err := a.loadConfig()
+			if err != nil {
+				return err
+			}
+			return a.listConfiguredIdentities(cfg, "", "")
+		},
+	}
+	markSkipsStartupCleanup(cmd)
 	return cmd
 }
 
@@ -111,10 +133,10 @@ func (a *App) newBasicCreateCommand() *cobra.Command {
 }
 
 func (a *App) newBasicListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List basic age identities",
-		Long:  "List cage-configured native age identities.",
+		Long:  "List cage-configured native age identities without printing secret key material.",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := requireMacOS(); err != nil {
@@ -127,6 +149,8 @@ func (a *App) newBasicListCommand() *cobra.Command {
 			return a.listConfiguredIdentities(cfg, IdentityTypeBasic, "basic")
 		},
 	}
+	markSkipsStartupCleanup(cmd)
+	return cmd
 }
 
 func (a *App) newYubiKeyIdentityCommand() *cobra.Command {
@@ -338,14 +362,15 @@ func (a *App) newYubiKeyListCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "with --connected, list all compatible YubiKey slots")
 	cmd.Flags().StringVar(&serial, "serial", "", "with --connected, filter by YubiKey serial")
 	cmd.Flags().IntVar(&slot, "slot", 0, "with --connected, filter by YubiKey slot")
+	markSkipsStartupCleanup(cmd)
 	return cmd
 }
 
 func (a *App) newSecureEnclaveListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List Secure Enclave identities",
-		Long:  "List cage-configured Secure Enclave identities.",
+		Long:  "List cage-configured Secure Enclave identities without prompting Secure Enclave access or printing secret key material.",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := requireMacOS(); err != nil {
@@ -358,6 +383,8 @@ func (a *App) newSecureEnclaveListCommand() *cobra.Command {
 			return a.listConfiguredIdentities(cfg, IdentityTypeSecureEnclave, "secure-enclave")
 		},
 	}
+	markSkipsStartupCleanup(cmd)
+	return cmd
 }
 
 func (a *App) newIdentityDeleteCommand(identityType string, label string) *cobra.Command {
@@ -437,35 +464,23 @@ func (a *App) confirmIdentityOverwrite(cfg *Config, name string, path string, ye
 }
 
 func (a *App) listConfiguredIdentities(cfg *Config, identityType string, label string) error {
-	if _, err := fmt.Fprintf(a.out, "Configured %s identities:\n", label); err != nil {
+	header := "Configured identities:"
+	if identityType != "" {
+		header = fmt.Sprintf("Configured %s identities:", label)
+	}
+	if _, err := fmt.Fprintln(a.out, header); err != nil {
 		return err
 	}
 	count := 0
 	for _, name := range sortedMapKeys(cfg.Identities) {
 		identity := cfg.Identities[name]
-		if identity.Type != identityType {
+		if identityType != "" && identity.Type != identityType {
 			continue
 		}
 		count++
 		path := cfg.ResolveFile(identity.File)
-		status := "missing"
-		recipient := "-"
-		if exists, err := fileExists(path); err != nil {
-			status = "error: " + err.Error()
-		} else if exists {
-			if err := ensurePrivateFile(path, "identity file"); err != nil {
-				return err
-			}
-			status = "present"
-			foundRecipient, err := firstRecipientInIdentityFile(path)
-			if err != nil {
-				return err
-			}
-			if foundRecipient != "" {
-				recipient = foundRecipient
-			}
-		}
-		if _, err := fmt.Fprintf(a.out, "  %s\tfile=%s\tstatus=%s\trecipient=%s\n", name, identity.File, status, recipient); err != nil {
+		fileStatus, recipient, status := inspectIdentityFileMetadata(path)
+		if _, err := fmt.Fprintf(a.out, "  %s\ttype=%s\tfile=%s\tfile-status=%s\trecipient=%s\tstatus=%s\n", name, identity.Type, identity.File, fileStatus, recipient, status); err != nil {
 			return err
 		}
 	}
@@ -474,6 +489,25 @@ func (a *App) listConfiguredIdentities(cfg *Config, identityType string, label s
 		return err
 	}
 	return nil
+}
+
+func inspectIdentityFileMetadata(path string) (string, string, string) {
+	if exists, err := fileExists(path); err != nil {
+		return "unreadable", "-", managementStatusUnreadable
+	} else if !exists {
+		return "missing", "-", managementStatusMissingFile
+	}
+	if err := ensurePrivateFile(path, "identity file"); err != nil {
+		return "permission-error", "-", managementStatusPermissionError
+	}
+	foundRecipient, err := firstRecipientInIdentityFile(path)
+	if err != nil {
+		return "unreadable", "-", managementStatusUnreadable
+	}
+	if foundRecipient == "" {
+		return "present", "-", managementStatusInvalidFile
+	}
+	return "present", foundRecipient, managementStatusOK
 }
 
 func firstRecipientInIdentityFile(path string) (string, error) {

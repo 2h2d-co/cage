@@ -14,8 +14,57 @@ func (a *App) newProviderCommand() *cobra.Command {
 		Short: "Manage encrypted provider identities",
 		Long:  "Manage provider identities such as age-encrypted 1Password service account tokens.",
 	}
+	cmd.AddCommand(a.newProviderListCommand())
 	cmd.AddCommand(a.new1PasswordProviderCommand())
 	return cmd
+}
+
+func (a *App) newProviderListCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List configured providers",
+		Long:  "List cage-configured providers without decrypting provider tokens.",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := requireMacOS(); err != nil {
+				return err
+			}
+			cfg, err := a.loadConfig()
+			if err != nil {
+				return err
+			}
+			return a.listConfiguredProviders(cfg)
+		},
+	}
+	markSkipsStartupCleanup(cmd)
+	return cmd
+}
+
+func (a *App) listConfiguredProviders(cfg *Config) error {
+	if _, err := fmt.Fprintln(a.out, "Configured providers:"); err != nil {
+		return err
+	}
+	count := 0
+	for _, name := range sortedMapKeys(cfg.Providers) {
+		provider := cfg.Providers[name]
+		count++
+		identityStatus := referenceStatus(cfg.Identities, provider.Identity)
+		fileStatus, fileIssueStatus := inspectProviderFileMetadata(cfg.ResolveFile(provider.File))
+		status := managementStatusOK
+		if identityStatus == "missing" {
+			status = managementStatusMissingRef
+		} else if fileIssueStatus != managementStatusOK {
+			status = fileIssueStatus
+		}
+		if _, err := fmt.Fprintf(a.out, "  %s\ttype=%s\tidentity=%s\tidentity-status=%s\tfile=%s\tfile-status=%s\tstatus=%s\n", name, provider.Type, provider.Identity, identityStatus, provider.File, fileStatus, status); err != nil {
+			return err
+		}
+	}
+	if count == 0 {
+		_, err := fmt.Fprintln(a.out, "  (none)")
+		return err
+	}
+	return nil
 }
 
 func (a *App) new1PasswordProviderCommand() *cobra.Command {

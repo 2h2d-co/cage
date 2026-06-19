@@ -6,6 +6,16 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-06-19
+
+### Added
+
+- Add aggregate `cage identity list`, `cage provider list`, and `cage environment inspect NAME` metadata commands.
+
+### Changed
+
+- Standardize management list output around non-secret `key=value` metadata fields and row-level status reporting.
+
 ## [0.0.7] - 2026-06-18
 
 ### Added

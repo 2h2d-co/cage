@@ -8,6 +8,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	managementStatusOK              = "ok"
+	managementStatusMissingFile     = "missing-file"
+	managementStatusPermissionError = "permission-error"
+	managementStatusMissingRef      = "missing-reference"
+	managementStatusUnreadable      = "unreadable"
+	managementStatusInvalidFile     = "invalid-file"
+)
+
 func (a *App) newEnvironmentCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "environment",
@@ -18,6 +27,7 @@ func (a *App) newEnvironmentCommand() *cobra.Command {
 	cmd.AddCommand(a.newEnvironmentCreateCommand())
 	cmd.AddCommand(a.newEnvironmentCacheCommand())
 	cmd.AddCommand(a.newEnvironmentListCommand())
+	cmd.AddCommand(a.newEnvironmentInspectCommand())
 	cmd.AddCommand(a.newEnvironmentDeleteCommand())
 	return cmd
 }
@@ -97,10 +107,10 @@ func (a *App) newEnvironmentCreateCommand() *cobra.Command {
 }
 
 func (a *App) newEnvironmentListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List configured environments",
-		Long:  "List cage-configured 1Password Environments.",
+		Long:  "List cage-configured 1Password Environments without resolving secret values.",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := requireMacOS(); err != nil {
@@ -113,6 +123,29 @@ func (a *App) newEnvironmentListCommand() *cobra.Command {
 			return a.listConfiguredEnvironments(cfg)
 		},
 	}
+	markSkipsStartupCleanup(cmd)
+	return cmd
+}
+
+func (a *App) newEnvironmentInspectCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "inspect NAME",
+		Short: "Inspect a configured environment",
+		Long:  "Show non-secret metadata and wiring for one configured 1Password Environment without resolving secret values.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := requireMacOS(); err != nil {
+				return err
+			}
+			cfg, err := a.loadConfig()
+			if err != nil {
+				return err
+			}
+			return a.inspectConfiguredEnvironment(cfg, args[0])
+		},
+	}
+	markSkipsStartupCleanup(cmd)
+	return cmd
 }
 
 func (a *App) newEnvironmentDeleteCommand() *cobra.Command {
@@ -231,10 +264,10 @@ func (a *App) newProfileCreateCommand() *cobra.Command {
 }
 
 func (a *App) newProfileListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List profiles",
-		Long:  "List cage-configured profiles.",
+		Long:  "List cage-configured profiles without resolving secret values.",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := requireMacOS(); err != nil {
@@ -247,6 +280,8 @@ func (a *App) newProfileListCommand() *cobra.Command {
 			return a.listConfiguredProfiles(cfg)
 		},
 	}
+	markSkipsStartupCleanup(cmd)
+	return cmd
 }
 
 func (a *App) newProfileDeleteCommand() *cobra.Command {
@@ -325,19 +360,26 @@ func (a *App) listConfiguredEnvironments(cfg *Config) error {
 	for _, name := range sortedMapKeys(cfg.Environments) {
 		environment := cfg.Environments[name]
 		count++
-		providerStatus := "missing"
-		if _, ok := cfg.Providers[environment.Provider]; ok {
-			providerStatus = "present"
+		providerStatus := referenceStatus(cfg.Providers, environment.Provider)
+		cacheState, cacheTTL, cacheIdentity, cacheIdentityStatus := environmentCacheMetadata(cfg, environment)
+		status := managementStatusOK
+		if providerStatus == "missing" || cacheIdentityStatus == "missing" {
+			status = managementStatusMissingRef
 		}
-		cacheStatus := "disabled"
-		if environment.Cache != nil {
-			identityStatus := "missing"
-			if _, ok := cfg.Identities[environment.Cache.Identity]; ok {
-				identityStatus = "present"
-			}
-			cacheStatus = fmt.Sprintf("ttl=%s,identity=%s,identity-status=%s", environment.Cache.TTL, environment.Cache.Identity, identityStatus)
-		}
-		if _, err := fmt.Fprintf(a.out, "  %s\ttype=%s\tprovider=%s\tprovider-status=%s\tuuid=%s\tcache=%s\n", name, environment.Type, environment.Provider, providerStatus, environment.UUID, cacheStatus); err != nil {
+		if _, err := fmt.Fprintf(
+			a.out,
+			"  %s\ttype=%s\tprovider=%s\tprovider-status=%s\tuuid=%s\tcache=%s\tcache-ttl=%s\tcache-identity=%s\tcache-identity-status=%s\tstatus=%s\n",
+			name,
+			environment.Type,
+			environment.Provider,
+			providerStatus,
+			environment.UUID,
+			cacheState,
+			cacheTTL,
+			cacheIdentity,
+			cacheIdentityStatus,
+			status,
+		); err != nil {
 			return err
 		}
 	}
@@ -346,6 +388,110 @@ func (a *App) listConfiguredEnvironments(cfg *Config) error {
 		return err
 	}
 	return nil
+}
+
+func (a *App) inspectConfiguredEnvironment(cfg *Config, name string) error {
+	environment, ok := cfg.Environments[name]
+	if !ok {
+		return fmt.Errorf("unknown environment %q", name)
+	}
+
+	providerStatus := referenceStatus(cfg.Providers, environment.Provider)
+	providerType := "-"
+	providerIdentity := "-"
+	providerIdentityStatus := "-"
+	providerFile := "-"
+	providerFileStatus := "-"
+	providerFileIssueStatus := managementStatusOK
+	if provider, ok := cfg.Providers[environment.Provider]; ok {
+		providerType = provider.Type
+		providerIdentity = provider.Identity
+		providerIdentityStatus = referenceStatus(cfg.Identities, provider.Identity)
+		providerFile = provider.File
+		providerFileStatus, providerFileIssueStatus = inspectProviderFileMetadata(cfg.ResolveFile(provider.File))
+	}
+
+	cacheState, cacheTTL, cacheIdentity, cacheIdentityStatus := environmentCacheMetadata(cfg, environment)
+	referencedByProfiles := profileReferences(cfg, name)
+	status := managementStatusOK
+	if providerStatus == "missing" || providerIdentityStatus == "missing" || cacheIdentityStatus == "missing" {
+		status = managementStatusMissingRef
+	} else if providerFileIssueStatus != managementStatusOK {
+		status = providerFileIssueStatus
+	}
+
+	if _, err := fmt.Fprintf(a.out, "Environment %s:\n", name); err != nil {
+		return err
+	}
+	fields := [][2]string{
+		{"name", name},
+		{"type", environment.Type},
+		{"uuid", environment.UUID},
+		{"provider", environment.Provider},
+		{"provider-status", providerStatus},
+		{"provider-type", providerType},
+		{"provider-identity", providerIdentity},
+		{"provider-identity-status", providerIdentityStatus},
+		{"provider-file", providerFile},
+		{"provider-file-status", providerFileStatus},
+		{"cache", cacheState},
+		{"cache-ttl", cacheTTL},
+		{"cache-identity", cacheIdentity},
+		{"cache-identity-status", cacheIdentityStatus},
+		{"referenced-by-profiles", referencedByProfiles},
+		{"status", status},
+	}
+	for _, field := range fields {
+		if _, err := fmt.Fprintf(a.out, "  %s=%s\n", field[0], field[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func environmentCacheMetadata(cfg *Config, environment EnvironmentConfig) (string, string, string, string) {
+	if environment.Cache == nil {
+		return "disabled", "-", "-", "-"
+	}
+	return "enabled", environment.Cache.TTL, environment.Cache.Identity, referenceStatus(cfg.Identities, environment.Cache.Identity)
+}
+
+func profileReferences(cfg *Config, environmentName string) string {
+	references := []string{}
+	for _, profileName := range sortedMapKeys(cfg.Profiles) {
+		for _, profileEnvironmentName := range cfg.Profiles[profileName].Environments {
+			if profileEnvironmentName == environmentName {
+				references = append(references, profileName)
+				break
+			}
+		}
+	}
+	if len(references) == 0 {
+		return "-"
+	}
+	return strings.Join(references, ",")
+}
+
+func referenceStatus[V any](values map[string]V, name string) string {
+	if _, ok := values[name]; ok {
+		return "present"
+	}
+	return "missing"
+}
+
+func inspectProviderFileMetadata(path string) (string, string) {
+	if exists, err := fileExists(path); err != nil {
+		return "unreadable", managementStatusUnreadable
+	} else if !exists {
+		return "missing", managementStatusMissingFile
+	}
+	if err := ensurePrivateFile(path, "provider file"); err != nil {
+		return "permission-error", managementStatusPermissionError
+	}
+	if err := checkAgeCiphertextFile(path); err != nil {
+		return "invalid-ciphertext", managementStatusInvalidFile
+	}
+	return "age-ciphertext", managementStatusOK
 }
 
 func (a *App) listConfiguredProfiles(cfg *Config) error {
@@ -360,17 +506,19 @@ func (a *App) listConfiguredProfiles(cfg *Config) error {
 		if environmentNames == "" {
 			environmentNames = "-"
 		}
-		status := "ok"
 		missing := []string{}
 		for _, environmentName := range profile.Environments {
 			if _, ok := cfg.Environments[environmentName]; !ok {
 				missing = append(missing, environmentName)
 			}
 		}
+		missingEnvironments := "-"
+		status := managementStatusOK
 		if len(missing) > 0 {
-			status = "missing=" + strings.Join(missing, ",")
+			missingEnvironments = strings.Join(missing, ",")
+			status = managementStatusMissingRef
 		}
-		if _, err := fmt.Fprintf(a.out, "  %s\tenvironments=%s\tstatus=%s\n", name, environmentNames, status); err != nil {
+		if _, err := fmt.Fprintf(a.out, "  %s\tenvironments=%s\tmissing-environments=%s\tstatus=%s\n", name, environmentNames, missingEnvironments, status); err != nil {
 			return err
 		}
 	}
