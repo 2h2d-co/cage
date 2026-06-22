@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for future coding agents working on `github.com/2h2d-co/cage`.
+Guidance for coding agents working on `github.com/2h2d-co/cage`.
 
 ## Project intent
 
@@ -10,7 +10,7 @@ Core constraints:
 
 - Global config only: `$XDG_CONFIG_HOME/cage/config.toml`, falling back to `~/.config/cage/config.toml`.
 - `--config PATH` is supported for testing/development.
-- No hierarchical configs and no TUI for now.
+- No hierarchical configs or TUI.
 - Relative identity/provider files resolve from the config file directory.
 - Created identity files are named `NAME.identity` and written with mode `0600`.
 - Encrypted 1Password provider files are named `NAME.1p.age` and written with mode `0600`.
@@ -54,7 +54,7 @@ Resolution rules for `get`/`exec`:
 - `cage exec` uses process replacement semantics via `golang.org/x/sys/unix.Exec`.
 - `gosec` G304 is handled by cleaning file paths before reads; avoid adding `#nosec`.
 - Plugin command execution intentionally avoids `exec.Command` to keep `gosec` clean.
-- The 1Password Go SDK beta currently needs CGO for darwin cross-compilation; do not force `CGO_ENABLED=0` in release builds.
+- Release builds require CGO because the 1Password Go SDK beta needs CGO for darwin cross-compilation; do not force `CGO_ENABLED=0` in release builds.
 
 ## Identity/provider/environment/profile command behavior
 
@@ -77,7 +77,7 @@ Resolution rules for `get`/`exec`:
 
 Do not lower thresholds, disable linters, or add suppressions just to get green builds.
 
-Current expectations:
+Expectations:
 
 - No `nolint`.
 - No `#nosec`.
