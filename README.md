@@ -6,9 +6,9 @@ It is a different take on tools like `fnox`: configuration is global, profile/en
 
 Repository: <https://github.com/2h2d-co/cage>
 
-## Status
+## Features
 
-Initial implementation:
+Feature set:
 
 - Global config only: `$XDG_CONFIG_HOME/cage/config.toml`, falling back to `~/.config/cage/config.toml`
 - Development/testing override: `CAGE_CONFIG=PATH` or `--config PATH`
@@ -25,7 +25,7 @@ Initial implementation:
 - read-only `cage doctor` diagnostics for config, local files, and cache state
 - shell completions and manpage generation
 
-No TUI or hierarchical config is implemented.
+Unsupported: TUI and hierarchical config.
 
 ## Requirements
 
@@ -43,23 +43,40 @@ brew install age-plugin-yubikey age-plugin-se # if you use those identity types
 
 ## Install
 
-For macOS Apple Silicon with mise:
+Release artifacts are Apple Silicon-only (`darwin_arm64`). Homebrew, mise, and manual tarball installs require an Apple Silicon Mac. `go install` builds from source, but cage is only supported on macOS.
+
+### Homebrew
 
 ```sh
-mise use -g github:2h2d-co/cage@0.0.8
+brew install 2h2d-co/tap/cage
+```
+
+### mise
+
+```sh
+mise use -g github:2h2d-co/cage@0.0.9
 # or in a project mise.toml:
-# "github:2h2d-co/cage" = "0.0.8"
+# "github:2h2d-co/cage" = "0.0.9"
+```
+
+### Manual tarball
+
+```sh
+curl -L https://github.com/2h2d-co/cage/releases/download/v0.0.9/cage_0.0.9_darwin_arm64.tar.gz -o cage_0.0.9_darwin_arm64.tar.gz
+tar -xzf cage_0.0.9_darwin_arm64.tar.gz
+install -d "$HOME/.local/bin"
+install -m 0755 cage "$HOME/.local/bin/cage"
 ```
 
 The GitHub release publishes a `darwin_arm64` archive with the `cage` binary at the archive root, plus checksums and GitHub artifact attestations for mise's `github:` backend.
 
-For Go users:
+### Go install
 
 ```sh
-go install github.com/2h2d-co/cage@v0.0.8
+go install github.com/2h2d-co/cage@v0.0.9
 ```
 
-For local development:
+### Local development
 
 ```sh
 mise install
@@ -198,7 +215,7 @@ cage cache status dev
 cage cache status dev --json
 ```
 
-Remove cache entries that cannot currently be used because they are expired, inactive, missing, or unreadable:
+Remove cache entries that cannot be used because they are expired, inactive, missing, or unreadable:
 
 ```sh
 cage cache prune

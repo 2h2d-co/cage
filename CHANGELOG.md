@@ -2,9 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) style sections and uses semantic versioning once tagged releases begin.
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) style sections and semantic versioning.
 
 ## [Unreleased]
+
+## [0.0.9] - 2026-06-22
+
+### Changed
+
+- Polish release and install documentation for Homebrew, mise, manual tarball, and Go install paths.
+- Prepare the Homebrew tap formula to install Apple Silicon release assets.
 
 ## [0.0.8] - 2026-06-19
 
