@@ -1,12 +1,19 @@
-# AGENTS.md
-
-Guidance for coding agents working on `github.com/2h2d-co/cage`.
-
-## Project intent
+# cage CLI Project Instructions
 
 `cage` is a Go-based, macOS-only CLI secret manager: a minimal/opinionated alternative take on `fnox`.
 
-Core constraints:
+## Conventions
+
+- Format commit messages according to [Conventional Commits](https://www.conventionalcommits.org/).
+- Maintain `CHANGELOG.md` using the [Keep a Changelog](https://keepachangelog.com/) style.
+- Add changelog entries for changes whose commit would be `feat:` or `fix:`; keep entries under `Unreleased` until a release is made.
+- Release commits should do the following:
+  - update the project version;
+  - move `Unreleased` changelog entries into the new release section;
+  - commit with `release: vX.Y.Z` as the commit message;
+  - tag the release with the matching `vX.Y.Z` tag.
+
+## Core Constraints
 
 - Global config only: `$XDG_CONFIG_HOME/cage/config.toml`, falling back to `~/.config/cage/config.toml`.
 - `--config PATH` is supported for testing/development.
@@ -107,7 +114,7 @@ export MISE_TRUSTED_CONFIG_PATHS=$PWD
 - `mise.toml` defines Go, age, age plugins, actionlint, zizmor, golangci-lint, and GoReleaser.
 - `mise.lock` is present and should be kept in sync after tool changes.
 - `.golangci.yml` intentionally enables established Go quality/security linters.
-- `.goreleaser.yaml` builds darwin amd64/arm64 releases.
+- `.goreleaser.yaml` builds darwin/arm64 releases.
 - `Makefile` mirrors common tasks.
 
 ## Documentation/metadata
