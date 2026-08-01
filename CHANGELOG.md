@@ -6,6 +6,12 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ## [Unreleased]
 
+## [0.0.10] - 2026-08-01
+
+### Changed
+
+- Updated the 1Password SDK to its stable 0.4.1 release and refreshed SQLite, TOML, and Go system dependencies.
+
 ## [0.0.9] - 2026-06-22
 
 ### Added
