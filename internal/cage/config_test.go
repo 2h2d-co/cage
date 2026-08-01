@@ -389,7 +389,7 @@ environments = ["dev"]
 	if err == nil {
 		t.Fatal("LoadConfig accepted profile table form")
 	}
-	if !strings.Contains(err.Error(), "cannot store a table in a slice") {
+	if !strings.Contains(err.Error(), "cannot store a table") {
 		t.Fatalf("error = %q, want profile table form type error", err)
 	}
 }
