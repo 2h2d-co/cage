@@ -330,6 +330,10 @@ A checked-in starter manpage is also available at `docs/man/cage.1`.
 - Errors are redacted for common secret-looking values before cage prints them.
 - Use `--verbose` for high-level diagnostics or `--debug` for extra details; secret values are not intentionally logged.
 
+## Releases
+
+Release tags must be lightweight tags. Create one with `git tag v<version>`; do not use `git tag -a`, `git tag -s`, `git tag -m`, or `cog bump --annotated`.
+
 ## License
 
 MIT © Two Humans and Two Dogs LLC (2h2d.co)
