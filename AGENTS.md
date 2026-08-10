@@ -9,10 +9,13 @@
 - Add changelog entries for changes whose commit would be `feat:` or `fix:`; keep entries under `Unreleased` until a release is made.
 - Release commits should do the following:
   - be created with `scripts/release.sh VERSION` from clean `main` synchronized with `origin/main`;
-  - include the reproducible release-manifest digest in an SSH-signed commit;
+  - package CGO artifacts in the read-only `prepare-release.yml` workflow;
+  - locally download and validate the exact immutable preparation artifact;
+  - include the release-manifest digest, source commit, preparation run, and artifact ID in an SSH-signed commit;
   - move `Unreleased` changelog entries into a dated section for stable releases;
   - keep prerelease changes under `Unreleased`;
   - use `release: vVERSION` as the commit subject;
+  - leave the release commit's tree identical to its prepared, signed parent;
   - create a lightweight `vVERSION` tag and push the commit and tag atomically.
 
 ## Core Constraints

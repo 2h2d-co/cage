@@ -8,12 +8,12 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ### Added
 
-- Added a local signed release command that authorizes the exact reproducible Go release manifest.
+- Added a local signed release command that authorizes an exact GitHub-built Go release manifest.
 
 ### Security
 
-- Split release construction from credentialed GitHub publication and independently revalidate transferred artifacts.
-- Restricted release archives to an exact file manifest with normalized metadata, pinned tools, checksums, and GitHub attestations.
+- Split third-party validation, GitHub-owned CGO artifact construction, local authorization, and credentialed GitHub publication into separate trust domains.
+- Bound each release to a signed source commit, immutable preparation run and artifact IDs, an exact file manifest, pinned tools, checksums, and GitHub attestations.
 
 ## [0.0.10] - 2026-08-01
 

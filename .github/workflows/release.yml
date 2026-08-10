@@ -16,11 +16,12 @@ env:
 
 jobs:
   build:
-    name: Build release artifacts
-    runs-on: macos-15
+    name: Validate prepared release artifacts
+    runs-on: ubuntu-latest
     permissions:
+      actions: read # Required to inspect and download the signed preparation artifact.
       contents: read
-    timeout-minutes: 20
+    timeout-minutes: 10
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
       prerelease: ${{ steps.release.outputs.prerelease }}
@@ -67,10 +68,38 @@ jobs:
           expected_digest=$(git log -1 \
             --format='%(trailers:key=Release-Manifest-SHA256,valueonly)' \
             "$tag_commit")
+          source_sha=$(git log -1 \
+            --format='%(trailers:key=Release-Source-SHA,valueonly)' \
+            "$tag_commit")
+          build_run_id=$(git log -1 \
+            --format='%(trailers:key=Release-Build-Run-ID,valueonly)' \
+            "$tag_commit")
+          prepared_artifact_id=$(git log -1 \
+            --format='%(trailers:key=Release-Artifact-ID,valueonly)' \
+            "$tag_commit")
           if [[ ! $expected_digest =~ ^[0-9a-f]{64}$ ]]; then
             echo "release commit is missing a valid Release-Manifest-SHA256 trailer" >&2
             exit 1
           fi
+          if [[ ! $source_sha =~ ^[0-9a-f]{40}$ ]]; then
+            echo "release commit is missing a valid Release-Source-SHA trailer" >&2
+            exit 1
+          fi
+          if [[ ! $build_run_id =~ ^[0-9]+$ || ! $prepared_artifact_id =~ ^[0-9]+$ ]]; then
+            echo "release commit is missing valid preparation run and artifact trailers" >&2
+            exit 1
+          fi
+          if [[ $(git rev-parse "$tag_commit^") != "$source_sha" ]]; then
+            echo "release source must be the release commit's first parent" >&2
+            exit 1
+          fi
+          if [[ $(git rev-parse "$tag_commit^{tree}") != $(git rev-parse "$source_sha^{tree}") ]]; then
+            echo "release commit tree differs from the prepared release source" >&2
+            exit 1
+          fi
+          git -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile="$GITHUB_WORKSPACE/.github/release-signers" \
+            verify-commit "$source_sha"
           prerelease=false
           if [[ $GITHUB_REF_NAME == *-* ]]; then
             prerelease=true
@@ -80,37 +109,64 @@ jobs:
           fi
           {
             echo "expected-digest=$expected_digest"
+            echo "source-sha=$source_sha"
+            echo "build-run-id=$build_run_id"
+            echo "prepared-artifact-id=$prepared_artifact_id"
             echo "prerelease=$prerelease"
             echo "version=${GITHUB_REF_NAME#v}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Install build tools
-        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
-        with:
-          version: "2026.8.2"
-          install_args: --locked
-          cache: false
-
-      - name: Run checks
+      - name: Validate prepared build
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.release.outputs.prepared-artifact-id }}
+          BUILD_RUN_ID: ${{ steps.release.outputs.build-run-id }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.release.outputs.source-sha }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          go mod verify
-          hk check --all --check
-          go test -race -mod=readonly ./...
+          set -euo pipefail
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          workflow_id=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/prepare-release.yml" \
+            --jq .id)
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID")
+          if [[ $(jq -r .workflow_id <<< "$run") != "$workflow_id" ||
+                $(jq -r .event <<< "$run") != workflow_dispatch ||
+                $(jq -r .head_branch <<< "$run") != main ||
+                $(jq -r .head_sha <<< "$run") != "$SOURCE_SHA" ||
+                $(jq -r .conclusion <<< "$run") != success ]]; then
+            echo "signed preparation run does not describe a successful build of the release source" >&2
+            exit 1
+          fi
+          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID")
+          expected_name="go-release-${VERSION}-${SOURCE_SHA}"
+          if [[ $(jq -r .name <<< "$artifact") != "$expected_name" ||
+                $(jq -r .expired <<< "$artifact") != false ||
+                $(jq -r .workflow_run.id <<< "$artifact") != "$BUILD_RUN_ID" ||
+                $(jq -r .workflow_run.head_sha <<< "$artifact") != "$SOURCE_SHA" ]]; then
+            echo "signed preparation artifact does not belong to the expected build" >&2
+            exit 1
+          fi
 
-      - name: Build release artifacts
+      - name: Download prepared release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.release.outputs.prepared-artifact-id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.release.outputs.build-run-id }}
+          path: release-artifacts
+
+      - name: Validate release artifacts
         shell: bash
         env:
           EXPECTED_DIGEST: ${{ steps.release.outputs.expected-digest }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
-          test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
-          export RELEASE_GORELEASER_PATH
-          RELEASE_GORELEASER_PATH=$(mise which goreleaser)
-          release_dir="$RUNNER_TEMP/go-release"
-          scripts/package-release.sh "$VERSION" "$release_dir"
-          actual_digest=$(shasum -a 256 "$release_dir/release-manifest.sha256" | awk '{print $1}')
+          actual_digest=$(scripts/validate-release.sh "$VERSION" release-artifacts)
           if [[ $actual_digest != "$EXPECTED_DIGEST" ]]; then
             echo "release manifest digest $actual_digest does not match signed digest $EXPECTED_DIGEST" >&2
             exit 1
@@ -122,9 +178,9 @@ jobs:
         with:
           name: go-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/go-release/*.tar.gz
-            ${{ runner.temp }}/go-release/checksums.txt
-            ${{ runner.temp }}/go-release/release-manifest.sha256
+            release-artifacts/*.tar.gz
+            release-artifacts/checksums.txt
+            release-artifacts/release-manifest.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -134,6 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: github-release
     permissions:
+      actions: read # Required to revalidate the signed preparation run and artifact.
       attestations: write # Required to persist release artifact attestations.
       contents: write # Required to create the GitHub release.
       id-token: write # Required for artifact attestation signing.
@@ -177,6 +234,9 @@ jobs:
           message=$(jq -r .message <<< "$commit")
           subject=${message%%$'\n'*}
           expected_digest=$(sed -n 's/^Release-Manifest-SHA256: //p' <<< "$message")
+          source_sha=$(sed -n 's/^Release-Source-SHA: //p' <<< "$message")
+          build_run_id=$(sed -n 's/^Release-Build-Run-ID: //p' <<< "$message")
+          prepared_artifact_id=$(sed -n 's/^Release-Artifact-ID: //p' <<< "$message")
           if [[ $verified != true || $subject != "release: $GITHUB_REF_NAME" ]]; then
             echo "GitHub does not recognize the expected signed release commit" >&2
             exit 1
@@ -185,12 +245,50 @@ jobs:
             echo "release commit is missing a valid Release-Manifest-SHA256 trailer" >&2
             exit 1
           fi
+          if [[ ! $source_sha =~ ^[0-9a-f]{40}$ ||
+                ! $build_run_id =~ ^[0-9]+$ ||
+                ! $prepared_artifact_id =~ ^[0-9]+$ ]]; then
+            echo "release commit has invalid preparation trailers" >&2
+            exit 1
+          fi
+          if [[ $(jq -r '.parents[0].sha' <<< "$commit") != "$source_sha" ]]; then
+            echo "release source is no longer the release commit's first parent" >&2
+            exit 1
+          fi
+          source_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$source_sha")
+          if [[ $(jq -r .verification.verified <<< "$source_commit") != true ||
+                $(jq -r .tree.sha <<< "$source_commit") != $(jq -r .tree.sha <<< "$commit") ]]; then
+            echo "GitHub does not recognize the signed, tree-identical release source" >&2
+            exit 1
+          fi
+          workflow_id=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/prepare-release.yml" \
+            --jq .id)
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$build_run_id")
+          if [[ $(jq -r .workflow_id <<< "$run") != "$workflow_id" ||
+                $(jq -r .event <<< "$run") != workflow_dispatch ||
+                $(jq -r .head_branch <<< "$run") != main ||
+                $(jq -r .head_sha <<< "$run") != "$source_sha" ||
+                $(jq -r .conclusion <<< "$run") != success ]]; then
+            echo "signed preparation run no longer describes the expected successful build" >&2
+            exit 1
+          fi
+          artifact=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$prepared_artifact_id")
+          expected_name="go-release-${VERSION}-${source_sha}"
+          if [[ $(jq -r .name <<< "$artifact") != "$expected_name" ||
+                $(jq -r .expired <<< "$artifact") != false ||
+                $(jq -r .workflow_run.id <<< "$artifact") != "$build_run_id" ||
+                $(jq -r .workflow_run.head_sha <<< "$artifact") != "$source_sha" ]]; then
+            echo "signed preparation artifact no longer belongs to the expected build" >&2
+            exit 1
+          fi
 
           cd release-artifacts
           archive="cage_${VERSION}_darwin_arm64.tar.gz"
           expected_files=$(printf '%s\n' \
-            "checksums.txt" \
             "$archive" \
+            "checksums.txt" \
             "release-manifest.sha256")
           actual_files=$(find . -maxdepth 1 -type f -print | sed 's|^\./||' | LC_ALL=C sort)
           if [[ $actual_files != "$expected_files" ]]; then

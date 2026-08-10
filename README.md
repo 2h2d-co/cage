@@ -336,14 +336,19 @@ Create a signed release commit and lightweight tag from clean, synchronized
 `main`:
 
 ```sh
-scripts/release.sh 0.0.11-alpha.0
-git push --atomic origin main v0.0.11-alpha.0
+scripts/release.sh 0.0.12-alpha.0
+git push --atomic origin main v0.0.12-alpha.0
 ```
 
-The release command builds the GoReleaser archive twice from the Git index,
-requires byte-for-byte reproducibility, and signs the canonical release
-manifest digest in the release commit. Prereleases keep changelog entries
-under `Unreleased`; stable releases create the dated changelog section.
+The release command dispatches read-only validation and GitHub-owned build
+jobs for the exact signed source commit. It downloads and validates that
+immutable preparation artifact locally, then signs its canonical manifest
+digest, source commit, workflow run, and artifact ID in a tree-identical
+release commit. The tag workflow transfers that exact artifact rather than
+rebuilding host-sensitive CGO output before credentialed publication.
+
+Prereleases keep changelog entries under `Unreleased`; stable releases create
+and push a dated release-source commit before artifact preparation.
 
 Do not create annotated or signed tag objects. Release tags must be
 lightweight tags pointing to the signed release commit.

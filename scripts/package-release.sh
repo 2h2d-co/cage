@@ -32,49 +32,65 @@ fi
 mkdir -p "$output"
 output=$(cd "$output" && pwd)
 
-goreleaser_bin=${RELEASE_GORELEASER_PATH:-goreleaser}
-"$goreleaser_bin" release --clean --skip=publish >&2
-
 archive="cage_${version}_darwin_arm64.tar.gz"
-if [[ ! -f "dist/$archive" ]]; then
-	echo "missing Go release archive: $archive" >&2
+go_bin=${RELEASE_GO_PATH:-go}
+if [[ $("$go_bin" env GOVERSION) != go1.26.5 ]]; then
+	echo "release builds require Go 1.26.5" >&2
 	exit 1
 fi
-if [[ ! -f dist/checksums.txt ]]; then
-	echo "missing GoReleaser checksums.txt" >&2
-	exit 1
-fi
-cp "dist/$archive" "$output/$archive"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
-(
-	cd dist
-	shasum -a 256 "$archive"
-) >"$tmpdir/expected-checksums.txt"
-if ! cmp "$tmpdir/expected-checksums.txt" dist/checksums.txt; then
-	echo "GoReleaser checksums.txt does not match the release archive" >&2
-	exit 1
-fi
-cp dist/checksums.txt "$output/checksums.txt"
+stage="$tmpdir/archive"
+mkdir -p \
+	"$stage/docs/man" \
+	"$stage/examples" \
+	"$stage/internal/cage/launchd"
 
-expected_archive_files=$(printf '%s\n' \
-	"LICENSE" \
-	"README.md" \
-	"cage" \
-	"docs/man/cage.1" \
-	"examples/config.toml" \
-	"internal/cage/launchd/co.2h2d.cage.cache-prune.plist.tmpl")
-actual_archive_files=$(tar -tzf "$output/$archive" | LC_ALL=C sort)
-if [[ $actual_archive_files != "$expected_archive_files" ]]; then
-	echo "$archive contains unexpected files" >&2
-	exit 1
-fi
+CGO_ENABLED=1 GOFLAGS=-mod=readonly "$go_bin" build \
+	-buildvcs=false \
+	-trimpath \
+	-ldflags="-s -w -X main.version=$version" \
+	-o "$stage/cage" \
+	.
+
+install -m 0644 LICENSE "$stage/LICENSE"
+install -m 0644 README.md "$stage/README.md"
+install -m 0644 docs/man/cage.1 "$stage/docs/man/cage.1"
+install -m 0644 examples/config.toml "$stage/examples/config.toml"
+install -m 0644 \
+	internal/cage/launchd/co.2h2d.cage.cache-prune.plist.tmpl \
+	"$stage/internal/cage/launchd/co.2h2d.cage.cache-prune.plist.tmpl"
+chmod 0755 "$stage/cage"
+TZ=UTC touch -t 197001010000 \
+	"$stage/LICENSE" \
+	"$stage/README.md" \
+	"$stage/cage" \
+	"$stage/docs/man/cage.1" \
+	"$stage/examples/config.toml" \
+	"$stage/internal/cage/launchd/co.2h2d.cage.cache-prune.plist.tmpl"
+
+(
+	cd "$stage"
+	COPYFILE_DISABLE=1 /usr/bin/tar \
+		--format=ustar \
+		--uid 0 \
+		--gid 0 \
+		--uname root \
+		--gname root \
+		-cf - \
+		LICENSE \
+		README.md \
+		cage \
+		docs/man/cage.1 \
+		examples/config.toml \
+		internal/cage/launchd/co.2h2d.cage.cache-prune.plist.tmpl
+) | /usr/bin/gzip -n >"$output/$archive"
 
 (
 	cd "$output"
+	shasum -a 256 "$archive" >checksums.txt
 	shasum -a 256 checksums.txt "$archive" >release-manifest.sha256
-	shasum -a 256 -c release-manifest.sha256 >&2
 )
 
-shasum -a 256 "$output/release-manifest.sha256" | awk '{print $1}'
+scripts/validate-release.sh "$version" "$output"

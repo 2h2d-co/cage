@@ -1,0 +1,143 @@
+name: Prepare release
+run-name: Prepare ${{ inputs.version }} from ${{ inputs.source_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version without the v prefix
+        required: true
+        type: string
+      source_sha:
+        description: Exact main commit to package
+        required: true
+        type: string
+
+concurrency:
+  group: go-release-prepare-${{ inputs.version }}-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  MISE_LOCKED: "1"
+
+jobs:
+  validate:
+    name: Validate release source
+    runs-on: macos-15
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.source_sha }}
+
+      - name: Validate release source
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "release version must be a semantic version" >&2
+            exit 1
+          fi
+          if [[ ! $SOURCE_SHA =~ ^[0-9a-f]{40}$ || $(git rev-parse HEAD) != "$SOURCE_SHA" ]]; then
+            echo "workflow did not check out the requested release source" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$SOURCE_SHA" origin/main; then
+            echo "release source is not on origin/main" >&2
+            exit 1
+          fi
+          git -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile="$GITHUB_WORKSPACE/.github/release-signers" \
+            verify-commit "$SOURCE_SHA"
+
+      - name: Install validation tools
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          version: "2026.8.2"
+          install_args: --locked
+          cache: false
+
+      - name: Run checks
+        run: |
+          go mod verify
+          hk check --all --check
+          go test -race -mod=readonly ./...
+
+  build:
+    name: Build release artifacts
+    needs: validate
+    runs-on: macos-15
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.source_sha }}
+
+      - name: Set up pinned Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.26.5
+          check-latest: false
+          cache: false
+
+      - name: Build release artifacts
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+          test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "release version must be a semantic version" >&2
+            exit 1
+          fi
+          if [[ ! $SOURCE_SHA =~ ^[0-9a-f]{40}$ || $(git rev-parse HEAD) != "$SOURCE_SHA" ]]; then
+            echo "workflow did not check out the requested release source" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$SOURCE_SHA" origin/main; then
+            echo "release source is not on origin/main" >&2
+            exit 1
+          fi
+          git -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile="$GITHUB_WORKSPACE/.github/release-signers" \
+            verify-commit "$SOURCE_SHA"
+          test "$(go env GOVERSION)" = go1.26.5
+          go mod verify
+          tag="v$VERSION"
+          if git rev-parse --quiet --verify "refs/tags/$tag" >/dev/null; then
+            echo "release tag already exists: $tag" >&2
+            exit 1
+          fi
+          git -c tag.gpgSign=false tag "$tag"
+          release_dir="$RUNNER_TEMP/go-release"
+          RELEASE_GO_PATH=$(command -v go) \
+            scripts/package-release.sh "$VERSION" "$release_dir"
+
+      - name: Upload prepared release artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-release-${{ inputs.version }}-${{ inputs.source_sha }}
+          path: |
+            ${{ runner.temp }}/go-release/*.tar.gz
+            ${{ runner.temp }}/go-release/checksums.txt
+            ${{ runner.temp }}/go-release/release-manifest.sha256
+          if-no-files-found: error
+          retention-days: 30
