@@ -1,0 +1,15 @@
+title = "cage Betterleaks policy"
+betterleaksMinVersion = "v1.8.1"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore public 1Password schema discriminator literals"
+targetRules = ["generic-password"]
+condition = "AND"
+paths = ["^internal/cage/config\\.go$"]
+regexTarget = "line"
+regexes = [
+  "^\\s*(?:ProviderType1Password\\s*=\\s*\"1password\"|EnvironmentType1Password\\s*=\\s*\"1password-environment\")\\s*$",
+]
