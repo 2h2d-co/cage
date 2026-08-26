@@ -55,14 +55,14 @@ url = "https://github.com/str4d/age-plugin-yubikey/releases/download/v0.5.1/age-
 url_api = "https://api.github.com/repos/str4d/age-plugin-yubikey/releases/assets/391312796"
 
 [[tools.betterleaks]]
-version = "1.7.3"
+version = "1.8.1"
 backend = "aqua:betterleaks/betterleaks"
-specifiers = ["1.7.3"]
+specifiers = ["1.8.1"]
 
 [tools.betterleaks."platforms.macos-arm64"]
-checksum = "sha256:068449bf665a07d17389a38ddee749be7d5484254e9262018e138e94b43f10c0"
-url = "https://github.com/betterleaks/betterleaks/releases/download/v1.7.3/betterleaks_1.7.3_darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/betterleaks/betterleaks/releases/assets/496917587"
+checksum = "sha256:8e80f33b5f2a7426b390347b9fd466033723cb94b6bdffa7572632e2eaec964e"
+url = "https://github.com/betterleaks/betterleaks/releases/download/v1.8.1/betterleaks_1.8.1_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/betterleaks/betterleaks/releases/assets/519981770"
 provenance = "cosign"
 
 [[tools.cocogitto]]
@@ -96,13 +96,13 @@ url = "https://github.com/remko/age-plugin-se/releases/download/v0.2.1/age-plugi
 url_api = "https://api.github.com/repos/remko/age-plugin-se/releases/assets/333525919"
 
 [[tools.go]]
-version = "1.26.5"
+version = "1.26.7"
 backend = "core:go"
-specifiers = ["1.26.5"]
+specifiers = ["1.26.7"]
 
 [tools.go."platforms.macos-arm64"]
-checksum = "sha256:efb87ff28af9a188d0536ef5d42e63dd52ba8263cd7344a993cc48dd11dedb6a"
-url = "https://dl.google.com/go/go1.26.5.darwin-arm64.tar.gz"
+checksum = "sha256:020a1e8224811be75163e920bc77e0926a1390a6aeea19bdcf23f74b9d749f6d"
+url = "https://dl.google.com/go/go1.26.7.darwin-arm64.tar.gz"
 
 [[tools.golangci-lint]]
 version = "2.12.2"
@@ -137,14 +137,14 @@ url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/49
 provenance = "github-attestations"
 
 [[tools.hk]]
-version = "1.54.1"
+version = "1.56.0"
 backend = "aqua:jdx/hk"
-specifiers = ["1.54.1"]
+specifiers = ["1.56.0"]
 
 [tools.hk."platforms.macos-arm64"]
-checksum = "sha256:8384262050e5f523c58af9e23cd92e2274e38cf95b4e72cf66f63545afa149b2"
-url = "https://github.com/jdx/hk/releases/download/v1.54.1/hk-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/jdx/hk/releases/assets/505018164"
+checksum = "sha256:600207a25ac055ead8b20bd59ae779821e0dee9fc03c041ddb4432b60ad21b68"
+url = "https://github.com/jdx/hk/releases/download/v1.56.0/hk-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/jdx/hk/releases/assets/520698508"
 
 [[tools.zizmor]]
 version = "1.29.0"
