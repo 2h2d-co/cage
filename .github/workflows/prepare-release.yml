@@ -91,7 +91,7 @@ jobs:
       - name: Set up pinned Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.26.7
+          go-version: 1.27.0
           check-latest: false
           cache: false
 
@@ -119,7 +119,7 @@ jobs:
           git -c gpg.format=ssh \
             -c gpg.ssh.allowedSignersFile="$GITHUB_WORKSPACE/.github/release-signers" \
             verify-commit "$SOURCE_SHA"
-          test "$(go env GOVERSION)" = go1.26.7
+          test "$(go env GOVERSION)" = go1.27.0
           go mod verify
           tag="v$VERSION"
           if git rev-parse --quiet --verify "refs/tags/$tag" >/dev/null; then
