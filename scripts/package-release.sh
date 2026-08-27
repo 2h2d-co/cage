@@ -34,8 +34,8 @@ output=$(cd "$output" && pwd)
 
 archive="cage_${version}_darwin_arm64.tar.gz"
 go_bin=${RELEASE_GO_PATH:-go}
-if [[ $("$go_bin" env GOVERSION) != go1.27.0 ]]; then
-	echo "release builds require Go 1.27.0" >&2
+if [[ $("$go_bin" env GOVERSION) != go1.26.7 ]]; then
+	echo "release builds require Go 1.26.7" >&2
 	exit 1
 fi
 

@@ -30,7 +30,7 @@ Unsupported: TUI and hierarchical config.
 ## Requirements
 
 - macOS
-- Go 1.27+
+- Go 1.26+
 - `age-plugin-yubikey` for YubiKey identities
 - `age-plugin-se` for Secure Enclave identities
 
