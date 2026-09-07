@@ -3,7 +3,7 @@ module github.com/2h2d-co/cage
 go 1.26.7
 
 require (
-	filippo.io/age v1.3.1
+	filippo.io/age v1.3.2
 	github.com/1password/onepassword-sdk-go v0.4.1
 	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/pelletier/go-toml/v2 v2.4.3
