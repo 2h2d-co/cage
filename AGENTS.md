@@ -97,16 +97,13 @@ Expectations:
 - Zizmor runs as `zizmor --pedantic --no-ignores .github/workflows`.
 - GitHub Actions are pinned by full commit SHA and use `persist-credentials: false`.
 
-Recommended validation:
+Run the complete non-writing validation before committing:
 
 ```sh
-go mod verify
-test -z "$(gofmt -l .)"
-go test -race -mod=readonly ./...
-go vet ./...
-mise run lint
-goreleaser check
+mise run check
 ```
+
+It runs `go mod verify`, race-enabled tests, `go build`, the shared hk checks (gofmt, go vet, golangci-lint, and govulncheck), and `goreleaser check`.
 
 If mise config is untrusted in a non-interactive harness, run commands with:
 

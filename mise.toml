@@ -144,3 +144,13 @@ run = "hk check --all --check"
 [tasks.build]
 description = "Build cage"
 run = "go build -o ./dist/cage ."
+
+[tasks.check]
+description = "Run all non-writing project checks"
+run = [
+  "go mod verify",
+  "go test -race -mod=readonly ./...",
+  "go build ./...",
+  "hk check --all --check",
+  "goreleaser check",
+]
