@@ -98,13 +98,13 @@ url = "https://github.com/remko/age-plugin-se/releases/download/v0.2.1/age-plugi
 url_api = "https://api.github.com/repos/remko/age-plugin-se/releases/assets/333525919"
 
 [[tools.go]]
-version = "1.26.8"
+version = "1.27.1"
 backend = "core:go"
-specifiers = ["1.26.8"]
+specifiers = ["1.27.1"]
 
 [tools.go."platforms.macos-arm64"]
-checksum = "sha256:a012b25b571bd0138a03dcd25375ceba866fe5ca822f426d2c66a4de56fd3f4b"
-url = "https://dl.google.com/go/go1.26.8.darwin-arm64.tar.gz"
+checksum = "sha256:ee215d57e0ec269c60cc9ceca68e6bda321ba9ee5afe24f4b0988703c2d87d12"
+url = "https://dl.google.com/go/go1.27.1.darwin-arm64.tar.gz"
 
 [[tools.golangci-lint]]
 version = "2.14.0"

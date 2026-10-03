@@ -5,7 +5,7 @@ The integration suite exercises cage end to end without checking any secret mate
 ## Requirements
 
 - macOS
-- Go 1.26+
+- Go 1.27+
 - A 1Password service account token with access to the test Environments below
 
 The tests do **not** read the service account token from `OP_SERVICE_ACCOUNT_TOKEN`. Create the encrypted provider once during setup, then run the suite with the encrypted provider file on disk.

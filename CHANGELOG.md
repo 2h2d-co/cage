@@ -10,6 +10,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 - Added a local signed release command that authorizes an exact GitHub-built Go release manifest.
 
+### Changed
+
+- Built release binaries with Go 1.27.1, which requires macOS 13 Ventura or later.
+
 ### Security
 
 - Split third-party validation, GitHub-owned CGO artifact construction, local authorization, and credentialed GitHub publication into separate trust domains.
