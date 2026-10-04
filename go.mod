@@ -36,4 +36,7 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 )
 
-tool golang.org/x/vuln/cmd/govulncheck
+tool (
+	golang.org/x/tools/cmd/goimports
+	golang.org/x/vuln/cmd/govulncheck
+)
