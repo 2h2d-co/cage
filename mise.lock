@@ -57,14 +57,14 @@ url = "https://github.com/str4d/age-plugin-yubikey/releases/download/v0.5.1/age-
 url_api = "https://api.github.com/repos/str4d/age-plugin-yubikey/releases/assets/391312796"
 
 [[tools.betterleaks]]
-version = "1.8.1"
+version = "1.9.0"
 backend = "aqua:betterleaks/betterleaks"
-specifiers = ["1.8.1"]
+specifiers = ["1.9.0"]
 
 [tools.betterleaks."platforms.macos-arm64"]
-checksum = "sha256:8e80f33b5f2a7426b390347b9fd466033723cb94b6bdffa7572632e2eaec964e"
-url = "https://github.com/betterleaks/betterleaks/releases/download/v1.8.1/betterleaks_1.8.1_darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/betterleaks/betterleaks/releases/assets/519981770"
+checksum = "sha256:83dd7eaab13d44a1e8e347a17064cdef153a1478db473276d41b38d55613d3f2"
+url = "https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/betterleaks/betterleaks/releases/assets/599108927"
 provenance = "cosign"
 
 [[tools.cocogitto]]
@@ -129,13 +129,13 @@ url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/56
 provenance = "github-attestations"
 
 [[tools.hk]]
-version = "2.2.0"
+version = "2.4.0"
 backend = "packslip:github.com/jdx/hk"
-specifiers = ["2.2.0"]
+specifiers = ["2.4.0"]
 
 [tools.hk."platforms.macos-arm64"]
-checksum = "sha256:82da7ae00554222568ea4115939e13fca640c2fae426ea828176b5b08ea45f68"
-url = "https://github.com/jdx/hk/releases/download/v2.2.0/hk-aarch64-apple-darwin.tar.gz"
+checksum = "sha256:6e1c970b9de7ab4ee52c85869b2ea9cfe8769d25a0fe9536062e0ba62366ec59"
+url = "https://github.com/jdx/hk/releases/download/v2.4.0/hk-aarch64-apple-darwin.tar.gz"
 signer = "sigstore-oidc:https://github.com/jdx/hk/.github/workflows/release.yml"
 
 [[tools.zizmor]]
