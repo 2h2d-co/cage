@@ -12,13 +12,15 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) st
 
 ### Changed
 
-- Built release binaries with Go 1.27.1, which requires macOS 13 Ventura or later.
+- Built release binaries with Go 1.27.2, which requires macOS 13 Ventura or later.
 
 ### Security
 
 - Split third-party validation, GitHub-owned CGO artifact construction, local authorization, and credentialed GitHub publication into separate trust domains.
 - Bound each release to a signed source commit, immutable preparation run and artifact IDs, an exact file manifest, pinned tools, checksums, and GitHub attestations.
 - Updated `golang.org/x/crypto` to a release containing the latest security fixes.
+- Built with Go 1.27.2 to fix Go standard library vulnerabilities GO-2026-6603, GO-2026-6607,
+  GO-2026-6611, GO-2026-6613, and GO-2026-6617, which govulncheck reports as reachable.
 
 ## [0.0.10] - 2026-08-01
 
