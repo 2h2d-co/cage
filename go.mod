@@ -1,6 +1,6 @@
 module github.com/2h2d-co/cage
 
-go 1.27.2
+go 1.27.3
 
 require (
 	filippo.io/age v1.3.2
