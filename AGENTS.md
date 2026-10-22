@@ -113,7 +113,7 @@ export MISE_TRUSTED_CONFIG_PATHS=$PWD
 
 ## Tooling files
 
-- `mise.toml` defines Go, age, age plugins, actionlint, zizmor, golangci-lint, and GoReleaser.
+- `mise.toml` defines Go, age, age plugins, jactionlint, zizmor, golangci-lint, and GoReleaser.
 - `mise.lock` is present and should be kept in sync after tool changes.
 - `.golangci.yml` intentionally enables established Go quality/security linters.
 - `.goreleaser.yaml` builds darwin/arm64 releases.
